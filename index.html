@@ -556,6 +556,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.9.0',em:'20/11/2026 14:45',mudou:['Nota de fornecedor (meu CNPJ é o tomador): ao arrastar o PDF, abre sozinho um item em Contas a pagar com o nº da nota, o fornecedor e o valor, e o formulário já abre para definir vencimento e se é cota única ou parcelado','Notas de terceiros que já estavam na lista ganharam o atalho “+ lançar em contas a pagar”']},
  {v:'2.8.0',em:'20/11/2026 14:30',mudou:['Mais de um cartão de crédito: em “+ nova conta” escolha “Cartão de crédito”, dê uma identificação (ex.: Itaú final 1234), o vencimento e a fatura do mês — ele passa a aparecer todo mês','O cartão que já existia também ganhou identificação e dia de vencimento: é só clicar em “editar”','Todos os cartões somam em “Cartão” nos totais e na previsão do mês seguinte']},
  {v:'2.7.2',em:'20/11/2026 14:15',mudou:['Parcelado: o padrão agora é o valor total dividido pelas parcelas','Ao digitar o valor e o nº de parcelas, aparece o valor de cada parcela, e dá para ajustar uma a uma antes de lançar (cada parcela guarda o seu valor)']},
  {v:'2.7.1',em:'20/11/2026 14:05',mudou:['Nova conta / editar: o vencimento virou campo de data, com calendário para escolher','O valor virou campo de dinheiro: só aceita números e formata sozinho (35000 vira 35.000,00)']},
@@ -1140,7 +1141,7 @@ function reativarEmprestimo(contrato){const info=S.empQuitado[contrato]||{};cons
  persist();renderEmp();renderMes();renderSaldo();renderKpisMes();renderKpisAno();}
 
 /* ---------- Mês atual ---------- */
-const tagFonte={doc:'doc',estimado:'est',recorrente:'rec',atrasado:'atr'},tagGrupo={Fixo:'fix',Imposto:'imp',Extra:'ext'};
+const tagFonte={doc:'doc',estimado:'est',recorrente:'rec',atrasado:'atr',nota:'doc'},tagGrupo={Fixo:'fix',Imposto:'imp',Extra:'ext'};
 function contaHTML(c){const paid=!!S.pagos[c.id];const vc=vClass(c.venc);const over=!paid&&c.venc&&dnum(c.venc)<TODAYNUM;
  const custom=(''+c.id).startsWith('x');
  const acao=c.fromAtraso?`<span style="font-size:10.5px;color:var(--muted)">↳ veio de impostos atrasados</span>`:`${c.editavel||custom?`<button class="arqbtn" onclick="editarConta('${c.id}')">✏ editar</button>`:''}<button class="arqbtn" onclick="removerConta('${c.id}')">🗑 remover</button>`;
@@ -1398,10 +1399,10 @@ function _parseDANFSe(txt){const T=(txt||'').replace(/\s+/g,' ');
 async function dropNotasPDF(files){const s=document.getElementById('dz-nf-s');const pdfs=[...files].filter(f=>/\.pdf$/i.test(f.name));
   if(!pdfs.length){if(s)s.textContent='Arraste PDF(s) de nota (DANFSe).';return;}
   if(s)s.textContent='⏳ lendo '+pdfs.length+' nota(s)...';
-  let ok=0,dup=0,fail=[],okArq=[],okT=[];
+  let ok=0,dup=0,fail=[],okArq=[],okT=[],novasT=[];
   for(const f of pdfs){try{const txt=await _pdfTexto(f);
     {const tm=_tomadaDANFSe(txt);if(tm){const ja=S.terceiros.find(t=>t.n===tm.n&&(t.cnpj||'').replace(/\D/g,'')===(tm.cnpj||'').replace(/\D/g,''));
-       if(ja){dup++;continue;}S.terceiros.push(tm);okT.push(tm.n);continue;}}
+       if(ja){dup++;continue;}S.terceiros.push(tm);okT.push(tm.n);novasT.push(tm);continue;}}
     const d=_parseDANFSe(txt);
     if(isNaN(d.liq)&&isNaN(d.bruto)){fail.push(f.name);continue;}
     const liq=isNaN(d.liq)?d.bruto:d.liq,bru=isNaN(d.bruto)?liq:d.bruto;
@@ -1413,8 +1414,11 @@ async function dropNotasPDF(files){const s=document.getElementById('dz-nf-s');co
     if(d.n&&getNotas().some(n=>(''+n.n)===(''+d.n))){dup++;continue;}
     S.notasExtra.push({n:d.n||'—',cli:d.cli||'(conferir cliente)',liq,bruto:bru,data:d.data||hojeBR(),k:'nx'+S.notasExtra.length+'_'+(d.n||Math.floor(Math.random()*1e5))});ok++;
   }catch(e){fail.push(f.name);}}
+  /* nota em que eu sou o tomador: abre sozinha um item em Contas a pagar (único); o formulário abre para definir vencimento e se é parcelado */
+  const lancT=[];novasT.forEach(t=>{const id=lancarTerceiroEmContas(t.k,false);if(id)lancT.push(id);});
   persist();renderSaldo();renderMes();renderKpisMes();renderTerceiros();if(ok)agendarBusca(ok+' nota(s) fiscal(is) subida(s)');
-  if(s)s.innerHTML='✓ '+ok+' nota(s) adicionada(s)'+(okArq.length?' · no mês fechado: NF '+okArq.join(', '):'')+(okT.length?' · de TERCEIROS (você pagou): NF '+okT.join(', '):'')+(dup?' · '+dup+' já existia(m)':'')+(fail.length?' · <span style="color:var(--red)">não li: '+fail.map(x=>x.length>22?x.slice(0,20)+'…':x).join(', ')+' — adicione manual</span>':'');}
+  if(lancT.length)abrirEdicaoConta(lancT[0]);
+  if(s)s.innerHTML='✓ '+ok+' nota(s) adicionada(s)'+(okArq.length?' · no mês fechado: NF '+okArq.join(', '):'')+(okT.length?' · de TERCEIROS (você é o tomador): NF '+okT.join(', ')+(lancT.length?' — lançada'+(lancT.length>1?'s':'')+' em Contas a pagar'+(lancT.length>1?' (confira cada uma pelo editar)':''):''):'')+(dup?' · '+dup+' já existia(m)':'')+(fail.length?' · <span style="color:var(--red)">não li: '+fail.map(x=>x.length>22?x.slice(0,20)+'…':x).join(', ')+' — adicione manual</span>':'');}
 /* ---- previsão de notas a emitir (não contabiliza) ---- */
 function _mesOptions(){const ci=MORDER.indexOf(mesKeyCorrente());const opts=[];
  for(let d=0;d<8;d++){let i=ci+d,y=2026;while(i>11){i-=12;y++;}opts.push({k:MORDER[i],label:MFULL[i]+'/'+y});}return opts;}
@@ -1442,7 +1446,7 @@ function renderNotasPrev(){const el=document.getElementById('lista-notasprev');i
    return `<div class="item" style="background:${atrasada?'#fff4f4':'#fffdf5'}"><div class="body"><div class="nm" style="font-size:13px">${pv.cli}</div><div class="meta"><span class="tag est">prevista p/ ${mlbl}</span>${atrasada?'<span class="badge-atraso">não emitida no prazo</span>':''}</div></div><div class="val" style="white-space:nowrap"><span style="color:var(--muted)">${brl(pv.bruto)}</span> <button class="arqbtn pago-btn" onclick="emitirNotaPrev('${pv.id}')">✓ emitir</button><button class="arqbtn" onclick="removerNotaPrev('${pv.id}')">🗑</button></div></div>`;}).join(''):'<div class="desc" style="padding:4px 0;font-size:11.5px">Nenhuma nota prevista. Use para lembrar o que falta emitir — escolha o mês previsto; se não emitir, ela continua aqui nos meses seguintes.</div>';
  document.getElementById('foot-notasprev').textContent=brl(lst.reduce((s,x)=>s+(x.bruto||0),0));}
 function editarConta(id){if(id==='cartaocredito'||((''+id).startsWith('x')&&(S.contasExtra||[]).some(x=>x.id===id))){abrirEdicaoConta(id);return;}if(id==='irrf_apagar'){const pk=mesAntKey();const c0=getContas().find(x=>x.id===id);const v0=prompt('IRRF s/ distribuição — competência '+(FULL[pk]||pk)+' — valor REAL da guia (R$):\nDeixe em branco para voltar à estimativa de 10%.',c0?fmt(c0.valor):'');if(v0===null)return;const t=(v0||'').trim();if(!S.irrfPago)S.irrfPago={};const antes=c0?c0.valor:0;if(!t)delete S.irrfPago[pk];else{const nv=parseBR(t);if(isNaN(nv))return;S.irrfPago[pk]=nv;}const depois=(getContas().find(x=>x.id===id)||{}).valor||0;if(S.pagos[id])S.saldo+=(antes-depois);persist();renderSaldo();renderMes();renderKpisMes();return;}if(id==='das_apagar'){const pk=mesAntKey();const c0=getContas().find(x=>x.id===id);const v0=prompt('DAS Simples — competência '+(FULL[pk]||pk)+' — valor REAL da guia (R$):\nDeixe em branco para voltar à previsão.',c0&&c0.fonte==='doc'?fmt(c0.valor):'');if(v0===null)return;const t=(v0||'').trim();if(!S.dasPago)S.dasPago={};const antes=c0?c0.valor:0;if(!t)delete S.dasPago[pk];else{const nv=parseBR(t);if(isNaN(nv))return;S.dasPago[pk]=nv;}const depois=(getContas().find(x=>x.id===id)||{}).valor||0;if(S.pagos[id])S.saldo+=(antes-depois);delete S.valores[id];persist();renderSaldo();renderMes();renderKpisMes();renderNotasMes();return;}const c=getContas().find(x=>x.id===id);if(!c)return;const v=prompt('Novo valor de "'+c.desc+'" (R$):',fmt(c.valor));if(v==null)return;const nv=parseBR(v);if(!isNaN(nv)){if(S.pagos[id])S.saldo+=(c.valor-nv);S.valores[id]=nv;persist();renderSaldo();renderMes();renderKpisMes();}}
-function removerConta(id){const c0=getContas().find(x=>x.id===id);if(confirm(c0&&c0.parc&&c0.parc.atual<c0.parc.n?'Remover esta conta parcelada? As parcelas seguintes também saem.':'Remover esta conta?')){const c=getContas().find(x=>x.id===id);if(c&&S.pagos[id])S.saldo+=c.valor;if((''+id).startsWith('x')){S.contasExtra=S.contasExtra.filter(c=>c.id!==id);if(S.periodic)delete S.periodic[id];}else{S.removidosC[id]=true;}delete S.valores[id];delete S.pagos[id];persist();renderSaldo();renderMes();renderKpisMes();}}
+function removerConta(id){const c0=getContas().find(x=>x.id===id);if(confirm(c0&&c0.parc&&c0.parc.atual<c0.parc.n?'Remover esta conta parcelada? As parcelas seguintes também saem.':'Remover esta conta?')){const c=getContas().find(x=>x.id===id);if(c&&S.pagos[id])S.saldo+=c.valor;if((''+id).startsWith('x')){const cx=S.contasExtra.find(c=>c.id===id);if(cx&&cx.tk){const tt=(S.terceiros||[]).find(t=>t.k===cx.tk);if(tt)delete tt.lanc;}S.contasExtra=S.contasExtra.filter(c=>c.id!==id);if(S.periodic)delete S.periodic[id];}else{S.removidosC[id]=true;}delete S.valores[id];delete S.pagos[id];persist();renderSaldo();renderMes();renderKpisMes();}}
 function removerNota(k){if(confirm('Remover esta nota?')){const n=getNotas().find(x=>x.k===k);if(n&&S.recebidos[k])S.saldo-=n.liq;if((''+k).startsWith('nx')){S.notasExtra=S.notasExtra.filter(n=>n.k!==k);}else{S.removidosN[k]=true;}delete S.recebidos[k];persist();renderSaldo();renderMes();renderKpisMes();}}
 function restaurarContas(){S.removidosC={};persist();renderSaldo();renderMes();renderKpisMes();}
 function restaurarNotas(){S.removidosN={};persist();renderSaldo();renderMes();renderKpisMes();}
@@ -2367,11 +2371,19 @@ function _pagtoTerceiro(t){for(const k of MORDER){const R=RAWL[k]&&RAWL[k].rows;
 function renderTerceiros(){const el=document.getElementById('lista-terceiros');if(!el)return;const L=(S.terceiros||[]).slice().sort((a,b)=>MORDER.indexOf(a.mes)-MORDER.indexOf(b.mes)||(+a.n||0)-(+b.n||0));
  if(!L.length){el.innerHTML='<div class="desc">Nenhuma nota de terceiro ainda.</div>';return;}
  el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11.5px"><tr style="color:var(--muted);text-align:left"><th>Mês</th><th>NF</th><th>Fornecedor</th><th style="text-align:right">Valor</th><th>Pagamento</th><th></th></tr>'+
-  L.map(t=>{const p=_pagtoTerceiro(t);return `<tr style="border-top:1px solid var(--line)"><td>${FULL[t.mes]||t.mes||''}</td><td>${t.n}</td><td>${t.forn}</td><td style="text-align:right">${brl(t.valor)}</td><td>${p?'<span style="color:var(--green)">✓ pago '+p.data+'</span>':'<span style="color:#b58a00">não achei no extrato</span>'}</td><td><a href="#" onclick="removerTerceiro('${t.k}');return false" style="color:var(--muted)">✕</a></td></tr>`;}).join('')+'</table>';}
+  L.map(t=>{const p=_pagtoTerceiro(t);return `<tr style="border-top:1px solid var(--line)"><td>${FULL[t.mes]||t.mes||''}</td><td>${t.n}</td><td>${t.forn}</td><td style="text-align:right">${brl(t.valor)}</td><td>${p?'<span style="color:var(--green)">✓ pago '+p.data+'</span>':'<span style="color:#b58a00">não achei no extrato</span>'+(((S.contasExtra||[]).some(c=>c.tk===t.k))?' <a href="#" onclick="lancarTerceiroEmContas(\''+t.k+'\',true);return false" style="white-space:nowrap">✏ em contas a pagar</a>':(t.lanc?'':' <a href="#" onclick="lancarTerceiroEmContas(\''+t.k+'\',true);return false" style="white-space:nowrap">+ lançar em contas a pagar</a>'))}</td><td><a href="#" onclick="removerTerceiro('${t.k}');return false" style="color:var(--muted)">✕</a></td></tr>`;}).join('')+'</table>';}
+/* cria em Contas a pagar o item de uma nota de terceiro (tomador = eu). Nasce como “único”; pelo editar vira parcelado. Não cria se já foi lançada ou se o pagamento já aparece no extrato. */
+function lancarTerceiroEmContas(k,abrir){const t=(S.terceiros||[]).find(x=>x.k===k);if(!t)return null;
+ const ja=(S.contasExtra||[]).find(c=>c.tk===k);if(ja){if(abrir)abrirEdicaoConta(ja.id);return null;}
+ if(t.lanc)return null;let pago=null;try{pago=_pagtoTerceiro(t);}catch(e){}if(pago&&!abrir)return null;
+ const id='x'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
+ S.contasExtra.push({id,desc:'NF '+t.n+' — '+(t.forn||'fornecedor'),venc:'',valor:+(+t.valor||0).toFixed(2),grupo:'Extra',fonte:'nota',tk:k});t.lanc=true;
+ if(abrir){persist();renderSaldo();renderMes();renderKpisMes();renderTerceiros();abrirEdicaoConta(id);}
+ return id;}
 function removerTerceiro(k){if(!confirm('Remover esta nota de terceiro?'))return;S.terceiros=(S.terceiros||[]).filter(t=>t.k!==k);persist();renderTerceiros();}
 function addTerceiroManual(){const n=prompt('Nº da nota do fornecedor:');if(n===null)return;const forn=prompt('Nome do fornecedor (empresa que prestou o serviço):');if(forn===null)return;
  const v=parseBR(prompt('Valor da nota (ex.: 3.500,00):')||'');if(!(v>0)){alert('Valor inválido.');return;}const data=prompt('Data de emissão (dd/mm/aaaa):',hojeBR())||hojeBR();
- const dm=data.match(/^\d{2}\/(\d{2})\/\d{4}$/);S.terceiros.push({n:(''+n).trim(),forn:(forn||'').trim().toUpperCase(),cnpj:'',valor:v,data,mes:dm?MORDER[+dm[1]-1]:mesKeyCorrente(),k:'tc'+Date.now()});persist();renderTerceiros();}
+ const dm=data.match(/^\d{2}\/(\d{2})\/\d{4}$/);S.terceiros.push({n:(''+n).trim(),forn:(forn||'').trim().toUpperCase(),cnpj:'',valor:v,data,mes:dm?MORDER[+dm[1]-1]:mesKeyCorrente(),k:'tc'+Date.now()});persist();renderTerceiros();lancarTerceiroEmContas(S.terceiros[S.terceiros.length-1].k,true);}
 setTimeout(()=>{try{renderTerceiros();}catch(e){}},800);
 /* ===== 🗂️ ORGANIZAR NOMES DA PASTA DO MÊS (padrão escolhido pelo Eduardo em 03/11/2026 — item 7) =====
    NN - MMM - IDENTIFICAÇÃO - VALOR - TIPO.ext   (ex.: 18 - OUT - DAS SIMPLES - COMP 09-2026 - 6.857,32 - GUIA.pdf)
