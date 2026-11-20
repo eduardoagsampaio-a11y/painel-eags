@@ -197,7 +197,7 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span>valor R$</span><input id="nc-val" inputmode="decimal" placeholder="0,00" style="width:120px;text-align:right;font-weight:600" onblur="ncValBlur(this)" oninput="this.value=this.value.replace(/[^0-9.,]/g,'');ncPrev()" title="Digite o valor; ao sair do campo ele é formatado como dinheiro (ex.: 35000 vira 35.000,00)"></label>
        <select id="nc-grp" onchange="ncGrpChange()" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só · Parcelado = custo comprado em parcelas, some depois da última"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option><option value="Parcelado">Parcelado (custo extra)</option></select>
        <input id="nc-np" class="nc-parc" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'');ncPrev()" placeholder="nº de parcelas" style="width:105px;display:none" title="Em quantas parcelas foi contratado">
-       <select id="nc-modo" class="nc-parc" onchange="ncPrev()" style="display:none" title="O valor digitado é de cada parcela ou é o total da compra?"><option value="parc">o valor é de cada parcela</option><option value="total">o valor é o total (dividir pelas parcelas)</option></select>
+       <select id="nc-modo" class="nc-parc" onchange="ncPrev()" style="display:none" title="O valor digitado é de cada parcela ou é o total da compra?"><option value="total">o valor é o total (dividir pelas parcelas)</option><option value="parc">o valor é de cada parcela</option></select>
        <input id="nc-pa" class="nc-parc" placeholder="já está na parcela nº (1)" style="width:165px;display:none" title="Deixe em branco se esta é a 1ª parcela. Se a compra já está em andamento, informe qual parcela vence agora.">
        <div id="nc-prev" style="display:none;flex-basis:100%;font-size:13px;background:#efe7f8;color:#4a2a78;border-radius:7px;padding:7px 10px"></div>
        <button id="nc-btn" onclick="addConta()">Adicionar</button>
@@ -556,7 +556,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
- {v:'2.7.2',em:'20/11/2026 14:10',mudou:['Parcelado: ao digitar o valor e o nº de parcelas, o formulário já mostra o valor de cada parcela e o total']},
+ {v:'2.7.2',em:'20/11/2026 14:15',mudou:['Parcelado: o padrão agora é o valor total dividido pelas parcelas','Ao digitar o valor e o nº de parcelas, aparece o valor de cada parcela, e dá para ajustar uma a uma antes de lançar (cada parcela guarda o seu valor)']},
  {v:'2.7.1',em:'20/11/2026 14:05',mudou:['Nova conta / editar: o vencimento virou campo de data, com calendário para escolher','O valor virou campo de dinheiro: só aceita números e formata sozinho (35000 vira 35.000,00)']},
  {v:'2.7.0',em:'20/11/2026 14:00',mudou:['Contas lançadas à mão: o botão “editar” agora abre a conta inteira — descrição, vencimento, valor, tipo (fixo, imposto, único, parcelado) e parcelas']},
  {v:'2.6.0',em:'20/11/2026 13:50',mudou:['Nova conta: opção “Parcelado (custo extra)” — informe o nº de parcelas e o valor (de cada parcela, ou o total para dividir). Mostra “parcela 2/6”, avança sozinha a cada mês fechado, entra na previsão do mês seguinte e some depois da última','Dá para começar no meio (ex.: já está na parcela 3)']},
@@ -758,7 +758,7 @@ function getContas(){const base=[...C.contas,...S.contasExtra,...parcelamentoCon
    if(c.id==='darf')desc='DARF Previdenciário — INSS s/ pró-labore (comp. '+(FULL[mesAntKey()]||'')+')';
    if(c.id==='dasjul')desc='DAS Simples — comp. '+(FULL[mesAntKey()]||'');
    let vbase=c.valor;
-   if(c.parc){const rest=c.parc.n-c.parc.atual;desc=c.desc+' — parcela '+c.parc.atual+'/'+c.parc.n+(rest>0?' · faltam '+rest:' · última');if(c.parc.ult!=null&&c.parc.atual>=c.parc.n)vbase=c.parc.ult;}
+   if(c.parc){const rest=c.parc.n-c.parc.atual;desc=c.desc+' — parcela '+c.parc.atual+'/'+c.parc.n+(rest>0?' · faltam '+rest:' · última');vbase=_parcVal(c,c.parc.atual);}
    return {...c,venc,desc,valor:(c.id!=='das_apagar'&&c.id!=='irrf_apagar'&&S.valores[c.id]!=null?S.valores[c.id]:vbase)};});}
 /* Mês (key curto) anterior ao mês corrente */
 function mesAntKey(){const p=(C.mesref||'Agosto/2026').split('/')[0];const i=MFULL.indexOf(p);const j=(i<=0?11:i-1);return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][j];}
@@ -887,7 +887,7 @@ function debitosFixosProx(){const o={'Impostos':[],'Pró-labore':[],'Plano de sa
  const add=(cat,id,desc,valor,venc)=>{const per=getPeriod(id);if(per==='unico')return;if(per==='anual'&&!proxJan)return;if(valor>0.005)o[cat].push({id,desc,valor,venc:venc||'',per});};
  getContas().forEach(c=>{if(c.fromAtraso)return;const id=''+c.id;
   if(c.parc){/* compra parcelada: a próxima parcela entra na previsão enquanto houver */
-   if(c.parc.atual<c.parc.n){const pn=c.parc.atual+1,raw=(S.contasExtra||[]).find(x=>x.id===c.id)||c;const pv=(c.parc.ult!=null&&pn>=c.parc.n)?c.parc.ult:raw.valor;o['Outros'].push({id,desc:raw.desc+' — parcela '+pn+'/'+c.parc.n,valor:pv,venc:_vencMais1(c.venc),per:'mensal'});}
+   if(c.parc.atual<c.parc.n){const pn=c.parc.atual+1,raw=(S.contasExtra||[]).find(x=>x.id===c.id)||c;const pv=_parcVal(raw,pn);o['Outros'].push({id,desc:raw.desc+' — parcela '+pn+'/'+c.parc.n,valor:pv,venc:_vencMais1(c.venc),per:'mensal'});}
    return;}
   if(id==='prolab')add('Pró-labore',id,'Pró-labore',c.valor,c.venc);
   else if(id==='plano')add('Plano de saúde',id,'Plano de saúde — Bradesco Saúde',c.valor,c.venc);
@@ -1253,24 +1253,34 @@ function _brParaISO(v){const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((''+(v||''
 function _parseValor(v){let t=(''+(v||'')).replace(/[^0-9.,]/g,'');if(!t)return NaN;if(t.indexOf(',')>=0)t=t.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(\.\d{3})+$/.test(t))t=t.replace(/\./g,'');return parseFloat(t);}
 function ncValBlur(el){const n=_parseValor(el.value);if(!isNaN(n))el.value=fmt(n);ncPrev();}
 let NC_EDIT=null; /* id da conta manual em edição no formulário (null = lançando conta nova) */
-function ncLimpar(){NC_EDIT=null;['nc-desc','nc-venc','nc-val','nc-np','nc-pa'].forEach(i=>{document.getElementById(i).value='';});document.getElementById('nc-grp').value='Fixo';document.getElementById('nc-modo').value='parc';document.getElementById('nc-btn').textContent='Adicionar';document.getElementById('nc-cancel').style.display='none';ncGrpChange();}
+function ncLimpar(){NC_EDIT=null;['nc-desc','nc-venc','nc-val','nc-np','nc-pa'].forEach(i=>{document.getElementById(i).value='';});document.getElementById('nc-grp').value='Fixo';document.getElementById('nc-modo').value='total';NC_PREVKEY='';document.getElementById('nc-btn').textContent='Adicionar';document.getElementById('nc-cancel').style.display='none';ncGrpChange();}
 function novaContaForm(){const el=document.getElementById('form-conta');const abrir=(el.style.display!=='flex')||!!NC_EDIT;ncLimpar();el.style.display=abrir?'flex':'none';}
 function ncCancelar(){ncLimpar();document.getElementById('form-conta').style.display='none';}
 function abrirEdicaoConta(id){const c=(S.contasExtra||[]).find(x=>x.id===id);if(!c)return;ncLimpar();NC_EDIT=id;const g=id=>document.getElementById(id);
  g('nc-desc').value=c.desc||'';g('nc-venc').value=_brParaISO(c.venc);
  let v=(S.valores&&S.valores[id]!=null)?S.valores[id]:c.valor;
  if(c.parc){g('nc-grp').value='Parcelado';g('nc-np').value=c.parc.n;g('nc-pa').value=c.parc.atual;
-  if(c.parc.ult!=null&&!(S.valores&&S.valores[id]!=null)){g('nc-modo').value='total';v=c.parc.total;}else g('nc-modo').value='parc';}
+  g('nc-modo').value='total';v=0;for(let k=1;k<=c.parc.n;k++)v+=_parcVal(c,k);v=+v.toFixed(2);}
  else g('nc-grp').value=(c.grupo==='Extra'?'Extra':(c.grupo==='Imposto'?'Imposto':'Fixo'));
- g('nc-val').value=fmt(v);g('nc-btn').textContent='Salvar alterações';g('nc-cancel').style.display='';ncGrpChange();ncPrev();
+ g('nc-val').value=fmt(v);g('nc-btn').textContent='Salvar alterações';g('nc-cancel').style.display='';ncGrpChange();ncPrev(true);
+ if(c.parc){const ins=document.querySelectorAll('.nc-pv');if(ins.length===c.parc.n){ins.forEach((e,i)=>{e.value=fmt(_parcVal(c,i+1));});ncPvSoma();}}
  const f=g('form-conta');f.style.display='flex';try{f.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){}g('nc-desc').focus();}
 /* mostra na hora o valor de cada parcela e o total, conforme o que foi digitado */
-function ncPrev(){const el=document.getElementById('nc-prev');if(!el)return;const on=document.getElementById('nc-grp').value==='Parcelado';const v=_parseValor(document.getElementById('nc-val').value),n=parseInt(document.getElementById('nc-np').value,10);
- if(!on||isNaN(v)||!(v>0)||!(n>=2)){el.style.display='none';el.innerHTML='';return;}
- let txt;if(document.getElementById('nc-modo').value==='total'){const vp=Math.floor(v/n*100)/100,ult=+(v-vp*(n-1)).toFixed(2);
-   txt=(Math.abs(ult-vp)<0.005?'<b>'+n+' parcelas de R$ '+fmt(vp)+'</b>':'<b>'+(n-1)+' parcelas de R$ '+fmt(vp)+' + última de R$ '+fmt(ult)+'</b>')+' · total R$ '+fmt(v);}
- else txt='<b>'+n+' parcelas de R$ '+fmt(v)+'</b> · total R$ '+fmt(v*n);
- el.innerHTML=txt;el.style.display='block';}
+function _parcVal(c,k){const p=c.parc;if(!p)return c.valor;if(p.vals&&p.vals[k-1]!=null)return p.vals[k-1];if(p.ult!=null&&k>=p.n)return p.ult;return c.valor;}
+let NC_PREVKEY='';
+function ncPrev(force){const el=document.getElementById('nc-prev');if(!el)return;const on=document.getElementById('nc-grp').value==='Parcelado';const v=_parseValor(document.getElementById('nc-val').value),n=parseInt(document.getElementById('nc-np').value,10),modo=document.getElementById('nc-modo').value;
+ if(!on||isNaN(v)||!(v>0)||!(n>=2)||n>120){el.style.display='none';el.innerHTML='';NC_PREVKEY='';return;}
+ const key=v+'|'+n+'|'+modo;if(!force&&key===NC_PREVKEY)return; /* só refaz a divisão quando muda valor, nº de parcelas ou o modo — não apaga ajustes feitos à mão */
+ NC_PREVKEY=key;const vals=[];if(modo==='total'){const vp=Math.floor(v/n*100)/100;for(let k=1;k<=n;k++)vals.push(k<n?vp:+(v-vp*(n-1)).toFixed(2));}else for(let k=1;k<=n;k++)vals.push(v);
+ el.innerHTML='<div style="margin-bottom:6px"><b>Valor de cada parcela</b> — já dividido; ajuste aqui se alguma for diferente:</div><div style="display:flex;flex-wrap:wrap;gap:6px 10px">'
+  +vals.map((x,i)=>'<label style="display:flex;align-items:center;gap:4px;font-size:12px">'+(i+1)+'ª<input class="nc-pv" inputmode="decimal" value="'+fmt(x)+'" style="width:92px;text-align:right" oninput="this.value=this.value.replace(/[^0-9.,]/g,\'\');ncPvSoma()" onblur="const n=_parseValor(this.value);if(!isNaN(n))this.value=fmt(n);ncPvSoma()"></label>').join('')
+  +'</div><div id="nc-pv-tot" style="margin-top:6px"></div>';
+ el.style.display='block';ncPvSoma();}
+/* soma das parcelas (com os ajustes) e aviso quando não fecha com o total digitado */
+function ncPvSoma(){const t=document.getElementById('nc-pv-tot');if(!t)return;let soma=0,ok=true;document.querySelectorAll('.nc-pv').forEach(e=>{const x=_parseValor(e.value);if(isNaN(x))ok=false;else soma+=x;});
+ if(!ok){t.innerHTML='<span style="color:var(--red)">Preencha o valor de todas as parcelas.</span>';return;}
+ const v=_parseValor(document.getElementById('nc-val').value),modo=document.getElementById('nc-modo').value;const dif=(modo==='total'&&!isNaN(v))?+(soma-v).toFixed(2):0;
+ t.innerHTML='Soma das parcelas: <b>R$ '+fmt(soma)+'</b>'+(Math.abs(dif)>=0.01?' <span style="color:var(--red)">('+(dif>0?'R$ '+fmt(dif)+' a mais':'R$ '+fmt(-dif)+' a menos')+' que o total digitado)</span>':'');}
 function ncGrpChange(){const on=document.getElementById('nc-grp').value==='Parcelado';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc-lbl');if(v)v.textContent=on?'venc. desta parcela':'vencimento';ncPrev();}
 /* conta extra (única ou parcelada) lançada à mão: nunca é tratada como mensal recorrente */
 function _ehExtra(id){return (S.contasExtra||[]).some(c=>c.id===id&&c.grupo==='Extra');}
@@ -1282,8 +1292,10 @@ function addConta(){const desc=document.getElementById('nc-desc').value.trim(),v
  if(grupo==='Parcelado'){const n=parseInt(document.getElementById('nc-np').value,10);const paTxt=document.getElementById('nc-pa').value.trim();const pa=paTxt?parseInt(paTxt,10):1;
   if(!(n>=2)){alert('Informe o número de parcelas (2 ou mais). Para pagamento em uma vez só, use “Único (custo extra)”.');return;}
   if(!(pa>=1&&pa<=n)){alert('A parcela atual deve ficar entre 1 e '+n+'.');return;}
-  if(document.getElementById('nc-modo').value==='total'){const total=valor;const vp=Math.floor(total/n*100)/100;parc={n,atual:pa,total:+total.toFixed(2),ult:+(total-vp*(n-1)).toFixed(2)};valor=vp;}
-  else parc={n,atual:pa,total:+(valor*n).toFixed(2)};
+  ncPrev();let vals=[];document.querySelectorAll('.nc-pv').forEach(e=>{vals.push(_parseValor(e.value));});
+  if(vals.length!==n){vals=[];if(document.getElementById('nc-modo').value==='total'){const vp=Math.floor(valor/n*100)/100;for(let k=1;k<=n;k++)vals.push(k<n?vp:+(valor-vp*(n-1)).toFixed(2));}else for(let k=1;k<=n;k++)vals.push(valor);}
+  if(vals.some(x=>isNaN(x)||x<0)){alert('Confira o valor de cada parcela.');return;}
+  vals=vals.map(x=>+x.toFixed(2));parc={n,atual:pa,total:+vals.reduce((a,b)=>a+b,0).toFixed(2),vals};valor=vals[pa-1];
   grupo='Extra';}
  const ed=NC_EDIT?(S.contasExtra||[]).find(x=>x.id===NC_EDIT):null;
  if(ed){/* edição completa de conta lançada à mão: descrição, vencimento, valor, tipo e parcelas */
