@@ -72,7 +72,7 @@ header.hero .tag{display:inline-block;margin-top:11px;background:rgba(255,255,25
 #tbl-extrato td{font-size:12px}#tbl-extrato .neg{color:var(--red)}#tbl-extrato .pos{color:var(--green)}
 .tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
 .tag.doc{background:#e2eff9;color:var(--navy2)}.tag.est{background:#fdf5e3;color:#8a6d1f}.tag.rec{background:#eef2f7;color:var(--muted)}
-.tag.imp{background:#fbe6e3;color:var(--red)}.tag.fix{background:#e7f2ec;color:var(--green)}.tag.atr{background:#fdecea;color:var(--red)}
+.tag.ext{background:#efe7f8;color:#6b3fa0}.tag.imp{background:#fbe6e3;color:var(--red)}.tag.fix{background:#e7f2ec;color:var(--green)}.tag.atr{background:#fdecea;color:var(--red)}
 .venc{font-weight:700;font-size:12.5px;background:#eef2f7;padding:2px 9px;border-radius:6px}
 .venc.soon{background:#fdf3d6;color:#8a6d1f}.venc.over{background:#f6d3ce;color:#a5281e}
 .status{font-size:10.5px;font-weight:700}.status.open{color:var(--red)}.status.ok{color:var(--green)}
@@ -195,7 +195,7 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
        <input id="nc-desc" placeholder="descrição" style="flex:1;min-width:150px">
        <input id="nc-venc" placeholder="venc. dd/mm/aaaa" style="width:135px">
        <input id="nc-val" placeholder="valor" style="width:95px">
-       <select id="nc-grp"><option>Fixo</option><option>Imposto</option></select>
+       <select id="nc-grp" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só e não volta no mês seguinte"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option></select>
        <button onclick="addConta()">Adicionar</button>
      </div>
      <div class="progress"><i id="bar-pagas"></i></div>
@@ -551,6 +551,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.5.0',em:'20/11/2026 13:40',mudou:['Nova conta: opção “Único (custo extra)” — pagamento avulso que não é imposto nem fixo. Aparece só no mês, não entra na previsão do mês seguinte e sai da lista ao fechar o mês (se ficar sem pagar, vai para Atrasados)']},
  {v:'2.4.0',em:'04/11/2026 17:16',mudou:['PDF: cabeçalho dos comprovantes no modelo C — nome do arquivo inteiro embaixo do título, caixinha “PG EM dd/mm/aa” (verde) ou “BOLETO/GUIA ✓ VALOR CONFERE” (azul) à direita sob o valor; anos com 2 dígitos; título nunca invade o valor']},
  {v:'2.3.1',em:'03/11/2026 20:26',mudou:['Janela de fechamento: botão “Gerar planilha e salvar tudo” à esquerda e “fechar janela” à direita','Horários das versões corrigidos (horário de Brasília)']},
  {v:'2.3.0',em:'03/11/2026 20:21',mudou:['Fechar o mês DE DENTRO do mês: clique no chip do mês (ex.: OUT) → botão “📥 Fechar OUTUBRO — gerar o kit”. Não precisa mais ir pelo mês em curso','Mês fechado agora é editável: clique no mês no menu lateral → dar baixa em conta, desfazer baixa, corrigir valor, incluir conta, marcar nota como recebida. Os meses seguintes são atualizados na hora (o atrasado some ou volta)','Mês só fica fechado definitivamente quando você clica em “marcar como enviado” (kit mandado ao contador): aí aparece 🔒 e qualquer alteração pede para digitar SIM']},
@@ -728,7 +729,7 @@ if(!S.parcelasPagas)S.parcelasPagas={}; /* parcelas de empréstimo quitadas pelo
 if(!S.empQuitado)S.empQuitado={}; /* empréstimos quitados à vista, por contrato */
 if(!C.contas.some(c=>c.id==='cartaocredito')) C.contas.push({id:'cartaocredito',desc:'Cartão de crédito (fixo · vence dia 18 · valor ajusta todo mês)',grupo:'Fixo',venc:'18/08/2026',valor:0,fonte:'ajustável',editavel:true});
 function parseBR(s){s=(''+s).trim();if(s.indexOf(',')>=0)s=s.replace(/\./g,'').replace(',','.');return parseFloat(s);}
-function atrasoPagoContas(){return getAtrasados().filter(c=>S.pagos[c.id]&&!S.arquivados[c.id]&&!S.renegociados[c.id]).map(c=>({id:c.id,desc:c.desc,grupo:'Imposto',fonte:'atrasado',venc:c.venc||'',valor:c.valor,fromAtraso:true}));}
+function atrasoPagoContas(){return getAtrasados().filter(c=>S.pagos[c.id]&&!S.arquivados[c.id]&&!S.renegociados[c.id]).map(c=>({id:c.id,desc:c.desc,grupo:(c.grupo==='Extra'?'Extra':'Imposto'),fonte:'atrasado',venc:c.venc||'',valor:c.valor,fromAtraso:true}));}
 /* mês (key curto) a partir de uma data dd/mm/aaaa */
 function _mesKeyFromData(d){try{const p=(''+d).split('/');const m=parseInt(p[1],10);if(isNaN(m)||m<1||m>12)return null;return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][m-1];}catch(e){return null;}}
 /* um imposto atrasado PAGO só aparece nas contas a pagar no mês em que foi pago; pagamentos de meses anteriores são arquivados (saem da lista, ficam no histórico) */
@@ -1002,6 +1003,9 @@ function _fecharMesCore(){const curKey=mesKeyCorrente(),curLabel=C.mesref||'Agos
  S.notasHist[curKey]={bruto:+bruto.toFixed(2),liq:+liq.toFixed(2),n:NT.length,em:new Date().toLocaleString('pt-BR')};
  NT.forEach(n=>{S.arqNotasK[n.k]=curKey;});
  contasMes.forEach(c=>{if(!c.fromAtraso)delete S.pagos[c.id];});
+ /* contas únicas (custo extra) valem só para o mês: saem da lista ao fechar (a não paga já virou atrasado acima) */
+ (S.contasExtra||[]).filter(c=>c.grupo==='Extra').forEach(c=>{if(S.periodic)delete S.periodic[c.id];if(S.valores)delete S.valores[c.id];});
+ S.contasExtra=(S.contasExtra||[]).filter(c=>c.grupo!=='Extra');
  S.recebidos={};S.transfList=[];
  C.mesref=nextLabel;S.mesref=nextLabel;
  _limparAtrasadosPagos();
@@ -1118,13 +1122,13 @@ function reativarEmprestimo(contrato){const info=S.empQuitado[contrato]||{};cons
  persist();renderEmp();renderMes();renderSaldo();renderKpisMes();renderKpisAno();}
 
 /* ---------- Mês atual ---------- */
-const tagFonte={doc:'doc',estimado:'est',recorrente:'rec',atrasado:'atr'},tagGrupo={Fixo:'fix',Imposto:'imp'};
+const tagFonte={doc:'doc',estimado:'est',recorrente:'rec',atrasado:'atr'},tagGrupo={Fixo:'fix',Imposto:'imp',Extra:'ext'};
 function contaHTML(c){const paid=!!S.pagos[c.id];const vc=vClass(c.venc);const over=!paid&&c.venc&&dnum(c.venc)<TODAYNUM;
  const custom=(''+c.id).startsWith('x');
  const acao=c.fromAtraso?`<span style="font-size:10.5px;color:var(--muted)">↳ veio de impostos atrasados</span>`:`${c.editavel||custom?`<button class="arqbtn" onclick="editarConta('${c.id}')">✏ editar</button>`:''}<button class="arqbtn" onclick="removerConta('${c.id}')">🗑 remover</button>`;
  return `<div class="item ${paid?'paid':''} ${over?'atrasada':''}"><div class="chk ${paid?'on':''}" onclick="togglePago('${c.id}')"></div>
   <div class="body"><div class="nm">${c.desc}</div><div class="meta">
-   ${c.grupo?`<span class="tag ${tagGrupo[c.grupo]}">${c.grupo}</span>`:''}${c.fonte?`<span class="tag ${tagFonte[c.fonte]||'rec'}">${c.fonte}</span>`:''}
+   ${c.grupo?`<span class="tag ${tagGrupo[c.grupo]||'rec'}">${c.grupo==='Extra'?'único':c.grupo}</span>`:''}${c.fonte?`<span class="tag ${tagFonte[c.fonte]||'rec'}">${c.fonte}</span>`:''}
    ${c.venc?`<span class="venc ${vc}">📅 ${c.venc}</span>`:''}${over?'<span class="badge-atraso">ATRASADA</span>':''}<span class="status ${paid?'ok':'open'}">${paid?'✓ pago':'em aberto'}</span>${paid&&!c.fromAtraso?`<span class="venc" style="color:var(--green)">💰 pago ${S.pagoData[c.id]||hojeBR()}</span><button class="arqbtn" onclick="editarPagoData('${c.id}')" title="Mudar a data do pagamento">✏ data</button>`:''}${acao}</div></div>
   <div class="val">${brl(c.valor)}</div></div>`;}
 function notaHTML(n){const rec=!!S.recebidos[n.k];
@@ -1229,7 +1233,9 @@ function renderSaldo(){const CT=getContas(),NT=getNotas();
 function toggleForm(id){const el=document.getElementById(id);el.style.display=(el.style.display==='flex'?'none':'flex');}
 function addConta(){const desc=document.getElementById('nc-desc').value.trim(),venc=document.getElementById('nc-venc').value.trim(),valor=parseBR(document.getElementById('nc-val').value),grupo=document.getElementById('nc-grp').value;
  if(!desc||isNaN(valor)){alert('Preencha a descrição e o valor.');return;}
- S.contasExtra.push({id:'x'+(Object.keys(S.pagos).length)+Math.floor(TODAY.getTime?TODAY.getTime()%100000:0)+S.contasExtra.length,desc,venc,valor,grupo,fonte:'manual'});
+ const nid='x'+(Object.keys(S.pagos).length)+Math.floor(TODAY.getTime?TODAY.getTime()%100000:0)+S.contasExtra.length;
+ S.contasExtra.push({id:nid,desc,venc,valor,grupo,fonte:'manual'});
+ if(grupo==='Extra'){S.periodic=S.periodic||{};S.periodic[nid]='unico';} /* conta única: não rola o vencimento nem entra na previsão do mês seguinte */
  persist();document.getElementById('nc-desc').value='';document.getElementById('nc-venc').value='';document.getElementById('nc-val').value='';toggleForm('form-conta');renderSaldo();renderMes();renderKpisMes();}
 function addNota(){const n=document.getElementById('nn-num').value.trim(),cli=document.getElementById('nn-cli').value.trim(),liq=parseBR(document.getElementById('nn-liq').value),bru=parseBR(document.getElementById('nn-bru').value);
  let data=(document.getElementById('nn-data').value||'').trim()||hojeBR();
@@ -1344,7 +1350,7 @@ function renderNotasPrev(){const el=document.getElementById('lista-notasprev');i
    return `<div class="item" style="background:${atrasada?'#fff4f4':'#fffdf5'}"><div class="body"><div class="nm" style="font-size:13px">${pv.cli}</div><div class="meta"><span class="tag est">prevista p/ ${mlbl}</span>${atrasada?'<span class="badge-atraso">não emitida no prazo</span>':''}</div></div><div class="val" style="white-space:nowrap"><span style="color:var(--muted)">${brl(pv.bruto)}</span> <button class="arqbtn pago-btn" onclick="emitirNotaPrev('${pv.id}')">✓ emitir</button><button class="arqbtn" onclick="removerNotaPrev('${pv.id}')">🗑</button></div></div>`;}).join(''):'<div class="desc" style="padding:4px 0;font-size:11.5px">Nenhuma nota prevista. Use para lembrar o que falta emitir — escolha o mês previsto; se não emitir, ela continua aqui nos meses seguintes.</div>';
  document.getElementById('foot-notasprev').textContent=brl(lst.reduce((s,x)=>s+(x.bruto||0),0));}
 function editarConta(id){if(id==='irrf_apagar'){const pk=mesAntKey();const c0=getContas().find(x=>x.id===id);const v0=prompt('IRRF s/ distribuição — competência '+(FULL[pk]||pk)+' — valor REAL da guia (R$):\nDeixe em branco para voltar à estimativa de 10%.',c0?fmt(c0.valor):'');if(v0===null)return;const t=(v0||'').trim();if(!S.irrfPago)S.irrfPago={};const antes=c0?c0.valor:0;if(!t)delete S.irrfPago[pk];else{const nv=parseBR(t);if(isNaN(nv))return;S.irrfPago[pk]=nv;}const depois=(getContas().find(x=>x.id===id)||{}).valor||0;if(S.pagos[id])S.saldo+=(antes-depois);persist();renderSaldo();renderMes();renderKpisMes();return;}if(id==='das_apagar'){const pk=mesAntKey();const c0=getContas().find(x=>x.id===id);const v0=prompt('DAS Simples — competência '+(FULL[pk]||pk)+' — valor REAL da guia (R$):\nDeixe em branco para voltar à previsão.',c0&&c0.fonte==='doc'?fmt(c0.valor):'');if(v0===null)return;const t=(v0||'').trim();if(!S.dasPago)S.dasPago={};const antes=c0?c0.valor:0;if(!t)delete S.dasPago[pk];else{const nv=parseBR(t);if(isNaN(nv))return;S.dasPago[pk]=nv;}const depois=(getContas().find(x=>x.id===id)||{}).valor||0;if(S.pagos[id])S.saldo+=(antes-depois);delete S.valores[id];persist();renderSaldo();renderMes();renderKpisMes();renderNotasMes();return;}const c=getContas().find(x=>x.id===id);if(!c)return;const v=prompt('Novo valor de "'+c.desc+'" (R$):',fmt(c.valor));if(v==null)return;const nv=parseBR(v);if(!isNaN(nv)){if(S.pagos[id])S.saldo+=(c.valor-nv);S.valores[id]=nv;persist();renderSaldo();renderMes();renderKpisMes();}}
-function removerConta(id){if(confirm('Remover esta conta?')){const c=getContas().find(x=>x.id===id);if(c&&S.pagos[id])S.saldo+=c.valor;if((''+id).startsWith('x')){S.contasExtra=S.contasExtra.filter(c=>c.id!==id);}else{S.removidosC[id]=true;}delete S.valores[id];delete S.pagos[id];persist();renderSaldo();renderMes();renderKpisMes();}}
+function removerConta(id){if(confirm('Remover esta conta?')){const c=getContas().find(x=>x.id===id);if(c&&S.pagos[id])S.saldo+=c.valor;if((''+id).startsWith('x')){S.contasExtra=S.contasExtra.filter(c=>c.id!==id);if(S.periodic)delete S.periodic[id];}else{S.removidosC[id]=true;}delete S.valores[id];delete S.pagos[id];persist();renderSaldo();renderMes();renderKpisMes();}}
 function removerNota(k){if(confirm('Remover esta nota?')){const n=getNotas().find(x=>x.k===k);if(n&&S.recebidos[k])S.saldo-=n.liq;if((''+k).startsWith('nx')){S.notasExtra=S.notasExtra.filter(n=>n.k!==k);}else{S.removidosN[k]=true;}delete S.recebidos[k];persist();renderSaldo();renderMes();renderKpisMes();}}
 function restaurarContas(){S.removidosC={};persist();renderSaldo();renderMes();renderKpisMes();}
 function restaurarNotas(){S.removidosN={};persist();renderSaldo();renderMes();renderKpisMes();}
