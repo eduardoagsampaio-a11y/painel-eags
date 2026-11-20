@@ -194,11 +194,12 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
      <div class="miniform" id="form-conta">
        <input id="nc-desc" placeholder="descrição" style="flex:1;min-width:150px">
        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span id="nc-venc-lbl">vencimento</span><input type="date" id="nc-venc" style="width:150px" title="Clique no ícone do calendário para escolher a data, ou digite"></label>
-       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span>valor R$</span><input id="nc-val" inputmode="decimal" placeholder="0,00" style="width:120px;text-align:right;font-weight:600" onblur="ncValBlur(this)" oninput="this.value=this.value.replace(/[^0-9.,]/g,'')" title="Digite o valor; ao sair do campo ele é formatado como dinheiro (ex.: 35000 vira 35.000,00)"></label>
+       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span>valor R$</span><input id="nc-val" inputmode="decimal" placeholder="0,00" style="width:120px;text-align:right;font-weight:600" onblur="ncValBlur(this)" oninput="this.value=this.value.replace(/[^0-9.,]/g,'');ncPrev()" title="Digite o valor; ao sair do campo ele é formatado como dinheiro (ex.: 35000 vira 35.000,00)"></label>
        <select id="nc-grp" onchange="ncGrpChange()" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só · Parcelado = custo comprado em parcelas, some depois da última"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option><option value="Parcelado">Parcelado (custo extra)</option></select>
-       <input id="nc-np" class="nc-parc" placeholder="nº de parcelas" style="width:105px;display:none" title="Em quantas parcelas foi contratado">
-       <select id="nc-modo" class="nc-parc" style="display:none" title="O valor digitado é de cada parcela ou é o total da compra?"><option value="parc">o valor é de cada parcela</option><option value="total">o valor é o total (dividir pelas parcelas)</option></select>
+       <input id="nc-np" class="nc-parc" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'');ncPrev()" placeholder="nº de parcelas" style="width:105px;display:none" title="Em quantas parcelas foi contratado">
+       <select id="nc-modo" class="nc-parc" onchange="ncPrev()" style="display:none" title="O valor digitado é de cada parcela ou é o total da compra?"><option value="parc">o valor é de cada parcela</option><option value="total">o valor é o total (dividir pelas parcelas)</option></select>
        <input id="nc-pa" class="nc-parc" placeholder="já está na parcela nº (1)" style="width:165px;display:none" title="Deixe em branco se esta é a 1ª parcela. Se a compra já está em andamento, informe qual parcela vence agora.">
+       <div id="nc-prev" style="display:none;flex-basis:100%;font-size:13px;background:#efe7f8;color:#4a2a78;border-radius:7px;padding:7px 10px"></div>
        <button id="nc-btn" onclick="addConta()">Adicionar</button>
        <button id="nc-cancel" onclick="ncCancelar()" style="display:none;background:#8492a6">Cancelar</button>
      </div>
@@ -555,6 +556,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.7.2',em:'20/11/2026 14:10',mudou:['Parcelado: ao digitar o valor e o nº de parcelas, o formulário já mostra o valor de cada parcela e o total']},
  {v:'2.7.1',em:'20/11/2026 14:05',mudou:['Nova conta / editar: o vencimento virou campo de data, com calendário para escolher','O valor virou campo de dinheiro: só aceita números e formata sozinho (35000 vira 35.000,00)']},
  {v:'2.7.0',em:'20/11/2026 14:00',mudou:['Contas lançadas à mão: o botão “editar” agora abre a conta inteira — descrição, vencimento, valor, tipo (fixo, imposto, único, parcelado) e parcelas']},
  {v:'2.6.0',em:'20/11/2026 13:50',mudou:['Nova conta: opção “Parcelado (custo extra)” — informe o nº de parcelas e o valor (de cada parcela, ou o total para dividir). Mostra “parcela 2/6”, avança sozinha a cada mês fechado, entra na previsão do mês seguinte e some depois da última','Dá para começar no meio (ex.: já está na parcela 3)']},
@@ -1249,7 +1251,7 @@ function _isoParaBR(v){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec((''+(v||'')).tri
 function _brParaISO(v){const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((''+(v||'')).trim());return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';}
 /* valor em dinheiro digitado no formulário: aceita 35000 · 35000,5 · 35.000 · 35.000,00 */
 function _parseValor(v){let t=(''+(v||'')).replace(/[^0-9.,]/g,'');if(!t)return NaN;if(t.indexOf(',')>=0)t=t.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(\.\d{3})+$/.test(t))t=t.replace(/\./g,'');return parseFloat(t);}
-function ncValBlur(el){const n=_parseValor(el.value);if(!isNaN(n))el.value=fmt(n);}
+function ncValBlur(el){const n=_parseValor(el.value);if(!isNaN(n))el.value=fmt(n);ncPrev();}
 let NC_EDIT=null; /* id da conta manual em edição no formulário (null = lançando conta nova) */
 function ncLimpar(){NC_EDIT=null;['nc-desc','nc-venc','nc-val','nc-np','nc-pa'].forEach(i=>{document.getElementById(i).value='';});document.getElementById('nc-grp').value='Fixo';document.getElementById('nc-modo').value='parc';document.getElementById('nc-btn').textContent='Adicionar';document.getElementById('nc-cancel').style.display='none';ncGrpChange();}
 function novaContaForm(){const el=document.getElementById('form-conta');const abrir=(el.style.display!=='flex')||!!NC_EDIT;ncLimpar();el.style.display=abrir?'flex':'none';}
@@ -1260,9 +1262,16 @@ function abrirEdicaoConta(id){const c=(S.contasExtra||[]).find(x=>x.id===id);if(
  if(c.parc){g('nc-grp').value='Parcelado';g('nc-np').value=c.parc.n;g('nc-pa').value=c.parc.atual;
   if(c.parc.ult!=null&&!(S.valores&&S.valores[id]!=null)){g('nc-modo').value='total';v=c.parc.total;}else g('nc-modo').value='parc';}
  else g('nc-grp').value=(c.grupo==='Extra'?'Extra':(c.grupo==='Imposto'?'Imposto':'Fixo'));
- g('nc-val').value=fmt(v);g('nc-btn').textContent='Salvar alterações';g('nc-cancel').style.display='';ncGrpChange();
+ g('nc-val').value=fmt(v);g('nc-btn').textContent='Salvar alterações';g('nc-cancel').style.display='';ncGrpChange();ncPrev();
  const f=g('form-conta');f.style.display='flex';try{f.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){}g('nc-desc').focus();}
-function ncGrpChange(){const on=document.getElementById('nc-grp').value==='Parcelado';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc-lbl');if(v)v.textContent=on?'venc. desta parcela':'vencimento';}
+/* mostra na hora o valor de cada parcela e o total, conforme o que foi digitado */
+function ncPrev(){const el=document.getElementById('nc-prev');if(!el)return;const on=document.getElementById('nc-grp').value==='Parcelado';const v=_parseValor(document.getElementById('nc-val').value),n=parseInt(document.getElementById('nc-np').value,10);
+ if(!on||isNaN(v)||!(v>0)||!(n>=2)){el.style.display='none';el.innerHTML='';return;}
+ let txt;if(document.getElementById('nc-modo').value==='total'){const vp=Math.floor(v/n*100)/100,ult=+(v-vp*(n-1)).toFixed(2);
+   txt=(Math.abs(ult-vp)<0.005?'<b>'+n+' parcelas de R$ '+fmt(vp)+'</b>':'<b>'+(n-1)+' parcelas de R$ '+fmt(vp)+' + última de R$ '+fmt(ult)+'</b>')+' · total R$ '+fmt(v);}
+ else txt='<b>'+n+' parcelas de R$ '+fmt(v)+'</b> · total R$ '+fmt(v*n);
+ el.innerHTML=txt;el.style.display='block';}
+function ncGrpChange(){const on=document.getElementById('nc-grp').value==='Parcelado';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc-lbl');if(v)v.textContent=on?'venc. desta parcela':'vencimento';ncPrev();}
 /* conta extra (única ou parcelada) lançada à mão: nunca é tratada como mensal recorrente */
 function _ehExtra(id){return (S.contasExtra||[]).some(c=>c.id===id&&c.grupo==='Extra');}
 /* vencimento + 1 mês (mantém o dia; ajusta para o último dia quando o mês é mais curto) */
