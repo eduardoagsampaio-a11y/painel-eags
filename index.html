@@ -195,7 +195,10 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
        <input id="nc-desc" placeholder="descrição" style="flex:1;min-width:150px">
        <input id="nc-venc" placeholder="venc. dd/mm/aaaa" style="width:135px">
        <input id="nc-val" placeholder="valor" style="width:95px">
-       <select id="nc-grp" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só e não volta no mês seguinte"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option></select>
+       <select id="nc-grp" onchange="ncGrpChange()" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só · Parcelado = custo comprado em parcelas, some depois da última"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option><option value="Parcelado">Parcelado (custo extra)</option></select>
+       <input id="nc-np" class="nc-parc" placeholder="nº de parcelas" style="width:105px;display:none" title="Em quantas parcelas foi contratado">
+       <select id="nc-modo" class="nc-parc" style="display:none" title="O valor digitado é de cada parcela ou é o total da compra?"><option value="parc">o valor é de cada parcela</option><option value="total">o valor é o total (dividir pelas parcelas)</option></select>
+       <input id="nc-pa" class="nc-parc" placeholder="já está na parcela nº (1)" style="width:165px;display:none" title="Deixe em branco se esta é a 1ª parcela. Se a compra já está em andamento, informe qual parcela vence agora.">
        <button onclick="addConta()">Adicionar</button>
      </div>
      <div class="progress"><i id="bar-pagas"></i></div>
@@ -551,6 +554,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.6.0',em:'20/11/2026 13:50',mudou:['Nova conta: opção “Parcelado (custo extra)” — informe o nº de parcelas e o valor (de cada parcela, ou o total para dividir). Mostra “parcela 2/6”, avança sozinha a cada mês fechado, entra na previsão do mês seguinte e some depois da última','Dá para começar no meio (ex.: já está na parcela 3)']},
  {v:'2.5.0',em:'20/11/2026 13:40',mudou:['Nova conta: opção “Único (custo extra)” — pagamento avulso que não é imposto nem fixo. Aparece só no mês, não entra na previsão do mês seguinte e sai da lista ao fechar o mês (se ficar sem pagar, vai para Atrasados)']},
  {v:'2.4.0',em:'04/11/2026 17:16',mudou:['PDF: cabeçalho dos comprovantes no modelo C — nome do arquivo inteiro embaixo do título, caixinha “PG EM dd/mm/aa” (verde) ou “BOLETO/GUIA ✓ VALOR CONFERE” (azul) à direita sob o valor; anos com 2 dígitos; título nunca invade o valor']},
  {v:'2.3.1',em:'03/11/2026 20:26',mudou:['Janela de fechamento: botão “Gerar planilha e salvar tudo” à esquerda e “fechar janela” à direita','Horários das versões corrigidos (horário de Brasília)']},
@@ -748,7 +752,9 @@ function getContas(){const base=[...C.contas,...S.contasExtra,...parcelamentoCon
    if(!c.fromAtraso&&c.id!=='das_apagar'&&getPeriod(c.id)==='mensal')venc=_rollVencMes(c.venc);
    if(c.id==='darf')desc='DARF Previdenciário — INSS s/ pró-labore (comp. '+(FULL[mesAntKey()]||'')+')';
    if(c.id==='dasjul')desc='DAS Simples — comp. '+(FULL[mesAntKey()]||'');
-   return {...c,venc,desc,valor:(c.id!=='das_apagar'&&c.id!=='irrf_apagar'&&S.valores[c.id]!=null?S.valores[c.id]:c.valor)};});}
+   let vbase=c.valor;
+   if(c.parc){const rest=c.parc.n-c.parc.atual;desc=c.desc+' — parcela '+c.parc.atual+'/'+c.parc.n+(rest>0?' · faltam '+rest:' · última');if(c.parc.ult!=null&&c.parc.atual>=c.parc.n)vbase=c.parc.ult;}
+   return {...c,venc,desc,valor:(c.id!=='das_apagar'&&c.id!=='irrf_apagar'&&S.valores[c.id]!=null?S.valores[c.id]:vbase)};});}
 /* Mês (key curto) anterior ao mês corrente */
 function mesAntKey(){const p=(C.mesref||'Agosto/2026').split('/')[0];const i=MFULL.indexOf(p);const j=(i<=0?11:i-1);return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][j];}
 /* DAS-Simples a pagar no mês corrente = faturamento do mês anterior × alíquota (competência anterior, vence dia 20) */
@@ -869,12 +875,15 @@ function renderKpisAno(){
 }
 /* ---------- Débitos fixos do mês seguinte ---------- */
 const PROXCATS=['Impostos','Pró-labore','Plano de saúde','Empréstimos','Contador','Cartão','Outros'];
-function getPeriod(id){if(S.periodic&&S.periodic[id])return S.periodic[id];if(S.naoFixo&&S.naoFixo[id])return 'unico';return 'mensal';}
+function getPeriod(id){if(_ehExtra(id))return 'unico';if(S.periodic&&S.periodic[id])return S.periodic[id];if(S.naoFixo&&S.naoFixo[id])return 'unico';return 'mensal';}
 function proxMesNum(){const p=(C.mesref||'Agosto/2026').split('/');let i=MFULL.indexOf(p[0]);i=(i<0?7:i)+1;if(i>11)i=0;return i+1;/* 1..12 */}
 function debitosFixosProx(){const o={'Impostos':[],'Pró-labore':[],'Plano de saúde':[],'Empréstimos':[],'Contador':[],'Cartão':[],'Outros':[]};
  const mesref=C.mesref||'Agosto/2026';const proxJan=(proxMesNum()===1);
  const add=(cat,id,desc,valor,venc)=>{const per=getPeriod(id);if(per==='unico')return;if(per==='anual'&&!proxJan)return;if(valor>0.005)o[cat].push({id,desc,valor,venc:venc||'',per});};
  getContas().forEach(c=>{if(c.fromAtraso)return;const id=''+c.id;
+  if(c.parc){/* compra parcelada: a próxima parcela entra na previsão enquanto houver */
+   if(c.parc.atual<c.parc.n){const pn=c.parc.atual+1,raw=(S.contasExtra||[]).find(x=>x.id===c.id)||c;const pv=(c.parc.ult!=null&&pn>=c.parc.n)?c.parc.ult:raw.valor;o['Outros'].push({id,desc:raw.desc+' — parcela '+pn+'/'+c.parc.n,valor:pv,venc:_vencMais1(c.venc),per:'mensal'});}
+   return;}
   if(id==='prolab')add('Pró-labore',id,'Pró-labore',c.valor,c.venc);
   else if(id==='plano')add('Plano de saúde',id,'Plano de saúde — Bradesco Saúde',c.valor,c.venc);
   else if(id==='contador')add('Contador',id,'Contador — Finoti',c.valor,c.venc);
@@ -925,7 +934,7 @@ function renderProx(){const d=debitosFixosProx();const cur=S.proxCat||'Total';
  document.getElementById('prox-lbl').textContent=cur==='Total'?'Total dos fixos do mês seguinte':('Total — '+cur);
  /* itens fora do mensal (anual/único) — mostra para reclassificar */
  const nomes={};getContas().forEach(c=>{if(!c.fromAtraso)nomes[''+c.id]=c.desc;});nomes['das_estimado']='DAS estimado';
- const fora=[];const per=S.periodic||{};Object.keys(per).forEach(id=>{if(per[id]!=='mensal')fora.push(id);});
+ const fora=[];const per=S.periodic||{};Object.keys(per).forEach(id=>{if(per[id]!=='mensal'&&!_ehExtra(id))fora.push(id);});
  (S.naoFixo?Object.keys(S.naoFixo):[]).forEach(id=>{if(fora.indexOf(id)<0)fora.push(id);});
  document.getElementById('prox-extra').innerHTML=fora.length?('<div style="text-align:left;font-size:11.5px;color:var(--muted);margin-top:6px">Fora do mensal: '+fora.map(id=>{const p=getPeriod(id);const lbl=(nomes[id]||'item')+' ('+(p==='anual'?'anual':'único')+')';return `<a onclick="classificarFixo('${id}')" style="cursor:pointer;color:var(--navy2);margin-right:10px;white-space:nowrap">${lbl} ⚙</a>`;}).join('')+' · <a onclick="restaurarFixos()" style="cursor:pointer">restaurar todos</a></div>'):'';}
 /* ---------- Semáforo de vencimentos ---------- */
@@ -1004,8 +1013,9 @@ function _fecharMesCore(){const curKey=mesKeyCorrente(),curLabel=C.mesref||'Agos
  NT.forEach(n=>{S.arqNotasK[n.k]=curKey;});
  contasMes.forEach(c=>{if(!c.fromAtraso)delete S.pagos[c.id];});
  /* contas únicas (custo extra) valem só para o mês: saem da lista ao fechar (a não paga já virou atrasado acima) */
- (S.contasExtra||[]).filter(c=>c.grupo==='Extra').forEach(c=>{if(S.periodic)delete S.periodic[c.id];if(S.valores)delete S.valores[c.id];});
- S.contasExtra=(S.contasExtra||[]).filter(c=>c.grupo!=='Extra');
+ /* parceladas: avançam para a próxima parcela (vencimento +1 mês) e só saem depois da última */
+ S.contasExtra=(S.contasExtra||[]).filter(c=>{if(c.grupo!=='Extra')return true;if(S.periodic)delete S.periodic[c.id];if(S.valores)delete S.valores[c.id];
+   if(c.parc&&c.parc.atual<c.parc.n){c.parc.atual++;c.venc=_vencMais1(c.venc);return true;}return false;});
  S.recebidos={};S.transfList=[];
  C.mesref=nextLabel;S.mesref=nextLabel;
  _limparAtrasadosPagos();
@@ -1128,7 +1138,7 @@ function contaHTML(c){const paid=!!S.pagos[c.id];const vc=vClass(c.venc);const o
  const acao=c.fromAtraso?`<span style="font-size:10.5px;color:var(--muted)">↳ veio de impostos atrasados</span>`:`${c.editavel||custom?`<button class="arqbtn" onclick="editarConta('${c.id}')">✏ editar</button>`:''}<button class="arqbtn" onclick="removerConta('${c.id}')">🗑 remover</button>`;
  return `<div class="item ${paid?'paid':''} ${over?'atrasada':''}"><div class="chk ${paid?'on':''}" onclick="togglePago('${c.id}')"></div>
   <div class="body"><div class="nm">${c.desc}</div><div class="meta">
-   ${c.grupo?`<span class="tag ${tagGrupo[c.grupo]||'rec'}">${c.grupo==='Extra'?'único':c.grupo}</span>`:''}${c.fonte?`<span class="tag ${tagFonte[c.fonte]||'rec'}">${c.fonte}</span>`:''}
+   ${c.grupo?`<span class="tag ${tagGrupo[c.grupo]||'rec'}">${c.grupo==='Extra'?(c.parc?'parcelado':'único'):c.grupo}</span>`:''}${c.fonte?`<span class="tag ${tagFonte[c.fonte]||'rec'}">${c.fonte}</span>`:''}
    ${c.venc?`<span class="venc ${vc}">📅 ${c.venc}</span>`:''}${over?'<span class="badge-atraso">ATRASADA</span>':''}<span class="status ${paid?'ok':'open'}">${paid?'✓ pago':'em aberto'}</span>${paid&&!c.fromAtraso?`<span class="venc" style="color:var(--green)">💰 pago ${S.pagoData[c.id]||hojeBR()}</span><button class="arqbtn" onclick="editarPagoData('${c.id}')" title="Mudar a data do pagamento">✏ data</button>`:''}${acao}</div></div>
   <div class="val">${brl(c.valor)}</div></div>`;}
 function notaHTML(n){const rec=!!S.recebidos[n.k];
@@ -1231,12 +1241,24 @@ function renderSaldo(){const CT=getContas(),NT=getNotas();
  </div>${proj<0?'<div class="callout red" style="margin-top:12px">⚠ Somando contas do mês, atrasados e recebimentos, o caixa projetado fica <b>negativo em '+brl(Math.abs(proj))+'</b>. Priorize receber ou reprogramar pagamentos.</div>':''}`;}
 /* ---- inserir / editar / remover ---- */
 function toggleForm(id){const el=document.getElementById(id);el.style.display=(el.style.display==='flex'?'none':'flex');}
-function addConta(){const desc=document.getElementById('nc-desc').value.trim(),venc=document.getElementById('nc-venc').value.trim(),valor=parseBR(document.getElementById('nc-val').value),grupo=document.getElementById('nc-grp').value;
+function ncGrpChange(){const on=document.getElementById('nc-grp').value==='Parcelado';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc');if(v)v.placeholder=on?'venc. desta parcela':'venc. dd/mm/aaaa';}
+/* conta extra (única ou parcelada) lançada à mão: nunca é tratada como mensal recorrente */
+function _ehExtra(id){return (S.contasExtra||[]).some(c=>c.id===id&&c.grupo==='Extra');}
+/* vencimento + 1 mês (mantém o dia; ajusta para o último dia quando o mês é mais curto) */
+function _vencMais1(venc){const p=(''+(venc||'')).split('/').map(Number);if(p.length!==3||p.some(isNaN))return venc;let m=p[1]+1,y=p[2];if(m>12){m=1;y++;}const ult=new Date(y,m,0).getDate();const d=Math.min(p[0],ult);return String(d).padStart(2,'0')+'/'+String(m).padStart(2,'0')+'/'+y;}
+function addConta(){const desc=document.getElementById('nc-desc').value.trim(),venc=document.getElementById('nc-venc').value.trim();let valor=parseBR(document.getElementById('nc-val').value),grupo=document.getElementById('nc-grp').value;
  if(!desc||isNaN(valor)){alert('Preencha a descrição e o valor.');return;}
+ let parc=null;
+ if(grupo==='Parcelado'){const n=parseInt(document.getElementById('nc-np').value,10);const paTxt=document.getElementById('nc-pa').value.trim();const pa=paTxt?parseInt(paTxt,10):1;
+  if(!(n>=2)){alert('Informe o número de parcelas (2 ou mais). Para pagamento em uma vez só, use “Único (custo extra)”.');return;}
+  if(!(pa>=1&&pa<=n)){alert('A parcela atual deve ficar entre 1 e '+n+'.');return;}
+  if(document.getElementById('nc-modo').value==='total'){const total=valor;const vp=Math.floor(total/n*100)/100;parc={n,atual:pa,total:+total.toFixed(2),ult:+(total-vp*(n-1)).toFixed(2)};valor=vp;}
+  else parc={n,atual:pa,total:+(valor*n).toFixed(2)};
+  grupo='Extra';}
  const nid='x'+(Object.keys(S.pagos).length)+Math.floor(TODAY.getTime?TODAY.getTime()%100000:0)+S.contasExtra.length;
- S.contasExtra.push({id:nid,desc,venc,valor,grupo,fonte:'manual'});
- if(grupo==='Extra'){S.periodic=S.periodic||{};S.periodic[nid]='unico';} /* conta única: não rola o vencimento nem entra na previsão do mês seguinte */
- persist();document.getElementById('nc-desc').value='';document.getElementById('nc-venc').value='';document.getElementById('nc-val').value='';toggleForm('form-conta');renderSaldo();renderMes();renderKpisMes();}
+ const nova={id:nid,desc,venc,valor,grupo,fonte:'manual'};if(parc)nova.parc=parc;
+ S.contasExtra.push(nova);
+ persist();document.getElementById('nc-desc').value='';document.getElementById('nc-venc').value='';document.getElementById('nc-val').value='';document.getElementById('nc-np').value='';document.getElementById('nc-pa').value='';document.getElementById('nc-grp').value='Fixo';document.getElementById('nc-modo').value='parc';ncGrpChange();toggleForm('form-conta');renderSaldo();renderMes();renderKpisMes();}
 function addNota(){const n=document.getElementById('nn-num').value.trim(),cli=document.getElementById('nn-cli').value.trim(),liq=parseBR(document.getElementById('nn-liq').value),bru=parseBR(document.getElementById('nn-bru').value);
  let data=(document.getElementById('nn-data').value||'').trim()||hojeBR();
  if(!cli||isNaN(liq)){alert('Preencha o cliente e o valor líquido.');return;}
@@ -1350,7 +1372,7 @@ function renderNotasPrev(){const el=document.getElementById('lista-notasprev');i
    return `<div class="item" style="background:${atrasada?'#fff4f4':'#fffdf5'}"><div class="body"><div class="nm" style="font-size:13px">${pv.cli}</div><div class="meta"><span class="tag est">prevista p/ ${mlbl}</span>${atrasada?'<span class="badge-atraso">não emitida no prazo</span>':''}</div></div><div class="val" style="white-space:nowrap"><span style="color:var(--muted)">${brl(pv.bruto)}</span> <button class="arqbtn pago-btn" onclick="emitirNotaPrev('${pv.id}')">✓ emitir</button><button class="arqbtn" onclick="removerNotaPrev('${pv.id}')">🗑</button></div></div>`;}).join(''):'<div class="desc" style="padding:4px 0;font-size:11.5px">Nenhuma nota prevista. Use para lembrar o que falta emitir — escolha o mês previsto; se não emitir, ela continua aqui nos meses seguintes.</div>';
  document.getElementById('foot-notasprev').textContent=brl(lst.reduce((s,x)=>s+(x.bruto||0),0));}
 function editarConta(id){if(id==='irrf_apagar'){const pk=mesAntKey();const c0=getContas().find(x=>x.id===id);const v0=prompt('IRRF s/ distribuição — competência '+(FULL[pk]||pk)+' — valor REAL da guia (R$):\nDeixe em branco para voltar à estimativa de 10%.',c0?fmt(c0.valor):'');if(v0===null)return;const t=(v0||'').trim();if(!S.irrfPago)S.irrfPago={};const antes=c0?c0.valor:0;if(!t)delete S.irrfPago[pk];else{const nv=parseBR(t);if(isNaN(nv))return;S.irrfPago[pk]=nv;}const depois=(getContas().find(x=>x.id===id)||{}).valor||0;if(S.pagos[id])S.saldo+=(antes-depois);persist();renderSaldo();renderMes();renderKpisMes();return;}if(id==='das_apagar'){const pk=mesAntKey();const c0=getContas().find(x=>x.id===id);const v0=prompt('DAS Simples — competência '+(FULL[pk]||pk)+' — valor REAL da guia (R$):\nDeixe em branco para voltar à previsão.',c0&&c0.fonte==='doc'?fmt(c0.valor):'');if(v0===null)return;const t=(v0||'').trim();if(!S.dasPago)S.dasPago={};const antes=c0?c0.valor:0;if(!t)delete S.dasPago[pk];else{const nv=parseBR(t);if(isNaN(nv))return;S.dasPago[pk]=nv;}const depois=(getContas().find(x=>x.id===id)||{}).valor||0;if(S.pagos[id])S.saldo+=(antes-depois);delete S.valores[id];persist();renderSaldo();renderMes();renderKpisMes();renderNotasMes();return;}const c=getContas().find(x=>x.id===id);if(!c)return;const v=prompt('Novo valor de "'+c.desc+'" (R$):',fmt(c.valor));if(v==null)return;const nv=parseBR(v);if(!isNaN(nv)){if(S.pagos[id])S.saldo+=(c.valor-nv);S.valores[id]=nv;persist();renderSaldo();renderMes();renderKpisMes();}}
-function removerConta(id){if(confirm('Remover esta conta?')){const c=getContas().find(x=>x.id===id);if(c&&S.pagos[id])S.saldo+=c.valor;if((''+id).startsWith('x')){S.contasExtra=S.contasExtra.filter(c=>c.id!==id);if(S.periodic)delete S.periodic[id];}else{S.removidosC[id]=true;}delete S.valores[id];delete S.pagos[id];persist();renderSaldo();renderMes();renderKpisMes();}}
+function removerConta(id){const c0=getContas().find(x=>x.id===id);if(confirm(c0&&c0.parc&&c0.parc.atual<c0.parc.n?'Remover esta conta parcelada? As parcelas seguintes também saem.':'Remover esta conta?')){const c=getContas().find(x=>x.id===id);if(c&&S.pagos[id])S.saldo+=c.valor;if((''+id).startsWith('x')){S.contasExtra=S.contasExtra.filter(c=>c.id!==id);if(S.periodic)delete S.periodic[id];}else{S.removidosC[id]=true;}delete S.valores[id];delete S.pagos[id];persist();renderSaldo();renderMes();renderKpisMes();}}
 function removerNota(k){if(confirm('Remover esta nota?')){const n=getNotas().find(x=>x.k===k);if(n&&S.recebidos[k])S.saldo-=n.liq;if((''+k).startsWith('nx')){S.notasExtra=S.notasExtra.filter(n=>n.k!==k);}else{S.removidosN[k]=true;}delete S.recebidos[k];persist();renderSaldo();renderMes();renderKpisMes();}}
 function restaurarContas(){S.removidosC={};persist();renderSaldo();renderMes();renderKpisMes();}
 function restaurarNotas(){S.removidosN={};persist();renderSaldo();renderMes();renderKpisMes();}
