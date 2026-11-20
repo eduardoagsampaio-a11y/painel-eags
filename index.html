@@ -479,6 +479,8 @@ async function conferir(){
 }
 
 async function carregarPainel(){
+  var st=await statusLogin();
+  if(st.bloqueado){await SB.auth.signOut();$('boot-sub').textContent='Entre com o seu e-mail e senha.';$('f-login').style.display='block';msgBloqueio(st.ate);return;}
   $('f-login').style.display='none';$('f-senha').style.display='none';
   $('boot-sub').textContent='Carregando seus dados…';msg('');
   var b=await SB.from('painel_base').select('dados').eq('id','consts').single();
@@ -501,11 +503,23 @@ async function depoisDoLogin(user){
     $('boot-sub').textContent='Bem-vindo!';$('f-login').style.display='none';$('f-senha').style.display='block';$('n-senha').focus();return;}
   carregarPainel();
 }
+function msgBloqueio(ate){msg('🔒 Acesso bloqueado por segurança (3 senhas erradas). Tente de novo depois das '+hhmm(ate)+'.');}
+async function statusLogin(){try{var r=await SB.rpc('login_status');return r.data||{};}catch(e){return {};}}
 $('l-btn').onclick=async function(){
   var em=$('l-email').value.trim(),pw=$('l-senha').value;if(!em||!pw){msg('Preencha e-mail e senha.');return;}
-  this.disabled=true;msg('Entrando…','#6b7787');
-  var r=await SB.auth.signInWithPassword({email:em,password:pw});this.disabled=false;
-  if(r.error){msg('E-mail ou senha incorretos.');return;}
+  var btn=this;btn.disabled=true;msg('Entrando…','#6b7787');
+  var st=await statusLogin();
+  if(st.bloqueado){btn.disabled=false;msgBloqueio(st.ate);return;}
+  var r=await SB.auth.signInWithPassword({email:em,password:pw});
+  if(r.error){
+    var f={};try{f=(await SB.rpc('login_falhou',{p_email:em})).data||{};}catch(e){}
+    btn.disabled=false;$('l-senha').value='';
+    if(f.bloqueado)msgBloqueio(f.ate);
+    else msg('E-mail ou senha incorretos. '+(f.restantes!=null?('Restam '+f.restantes+' tentativa'+(f.restantes===1?'':'s')+' antes do bloqueio.'):''));
+    return;}
+  var ok={};try{ok=(await SB.rpc('login_ok')).data||{};}catch(e){}
+  btn.disabled=false;
+  if(ok.bloqueado){await SB.auth.signOut();msgBloqueio(ok.ate);return;}
   depoisDoLogin(r.data.user);
 };
 $('n-btn').onclick=async function(){
