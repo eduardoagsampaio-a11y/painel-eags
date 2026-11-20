@@ -193,7 +193,7 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
      <button class="addbtn" onclick="novaContaForm()">+ nova conta</button>
      <div class="miniform" id="form-conta">
        <input id="nc-desc" placeholder="descrição" style="flex:1;min-width:150px">
-       <input id="nc-venc" placeholder="venc. dd/mm/aaaa" style="width:135px">
+       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span id="nc-venc-lbl">vencimento</span><input type="date" id="nc-venc" style="width:150px" title="Clique no ícone do calendário para escolher a data, ou digite"></label>
        <input id="nc-val" placeholder="valor" style="width:95px">
        <select id="nc-grp" onchange="ncGrpChange()" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só · Parcelado = custo comprado em parcelas, some depois da última"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option><option value="Parcelado">Parcelado (custo extra)</option></select>
        <input id="nc-np" class="nc-parc" placeholder="nº de parcelas" style="width:105px;display:none" title="Em quantas parcelas foi contratado">
@@ -555,6 +555,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.7.1',em:'20/11/2026 14:05',mudou:['Nova conta / editar: o vencimento virou campo de data, com calendário para escolher']},
  {v:'2.7.0',em:'20/11/2026 14:00',mudou:['Contas lançadas à mão: o botão “editar” agora abre a conta inteira — descrição, vencimento, valor, tipo (fixo, imposto, único, parcelado) e parcelas']},
  {v:'2.6.0',em:'20/11/2026 13:50',mudou:['Nova conta: opção “Parcelado (custo extra)” — informe o nº de parcelas e o valor (de cada parcela, ou o total para dividir). Mostra “parcela 2/6”, avança sozinha a cada mês fechado, entra na previsão do mês seguinte e some depois da última','Dá para começar no meio (ex.: já está na parcela 3)']},
  {v:'2.5.0',em:'20/11/2026 13:40',mudou:['Nova conta: opção “Único (custo extra)” — pagamento avulso que não é imposto nem fixo. Aparece só no mês, não entra na previsão do mês seguinte e sai da lista ao fechar o mês (se ficar sem pagar, vai para Atrasados)']},
@@ -1243,24 +1244,27 @@ function renderSaldo(){const CT=getContas(),NT=getNotas();
  </div>${proj<0?'<div class="callout red" style="margin-top:12px">⚠ Somando contas do mês, atrasados e recebimentos, o caixa projetado fica <b>negativo em '+brl(Math.abs(proj))+'</b>. Priorize receber ou reprogramar pagamentos.</div>':''}`;}
 /* ---- inserir / editar / remover ---- */
 function toggleForm(id){const el=document.getElementById(id);el.style.display=(el.style.display==='flex'?'none':'flex');}
+/* campo de data do formulário (aaaa-mm-dd) <-> data do painel (dd/mm/aaaa) */
+function _isoParaBR(v){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec((''+(v||'')).trim());return m?m[3]+'/'+m[2]+'/'+m[1]:'';}
+function _brParaISO(v){const m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((''+(v||'')).trim());return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';}
 let NC_EDIT=null; /* id da conta manual em edição no formulário (null = lançando conta nova) */
 function ncLimpar(){NC_EDIT=null;['nc-desc','nc-venc','nc-val','nc-np','nc-pa'].forEach(i=>{document.getElementById(i).value='';});document.getElementById('nc-grp').value='Fixo';document.getElementById('nc-modo').value='parc';document.getElementById('nc-btn').textContent='Adicionar';document.getElementById('nc-cancel').style.display='none';ncGrpChange();}
 function novaContaForm(){const el=document.getElementById('form-conta');const abrir=(el.style.display!=='flex')||!!NC_EDIT;ncLimpar();el.style.display=abrir?'flex':'none';}
 function ncCancelar(){ncLimpar();document.getElementById('form-conta').style.display='none';}
 function abrirEdicaoConta(id){const c=(S.contasExtra||[]).find(x=>x.id===id);if(!c)return;ncLimpar();NC_EDIT=id;const g=id=>document.getElementById(id);
- g('nc-desc').value=c.desc||'';g('nc-venc').value=c.venc||'';
+ g('nc-desc').value=c.desc||'';g('nc-venc').value=_brParaISO(c.venc);
  let v=(S.valores&&S.valores[id]!=null)?S.valores[id]:c.valor;
  if(c.parc){g('nc-grp').value='Parcelado';g('nc-np').value=c.parc.n;g('nc-pa').value=c.parc.atual;
   if(c.parc.ult!=null&&!(S.valores&&S.valores[id]!=null)){g('nc-modo').value='total';v=c.parc.total;}else g('nc-modo').value='parc';}
  else g('nc-grp').value=(c.grupo==='Extra'?'Extra':(c.grupo==='Imposto'?'Imposto':'Fixo'));
  g('nc-val').value=fmt(v);g('nc-btn').textContent='Salvar alterações';g('nc-cancel').style.display='';ncGrpChange();
  const f=g('form-conta');f.style.display='flex';try{f.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){}g('nc-desc').focus();}
-function ncGrpChange(){const on=document.getElementById('nc-grp').value==='Parcelado';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc');if(v)v.placeholder=on?'venc. desta parcela':'venc. dd/mm/aaaa';}
+function ncGrpChange(){const on=document.getElementById('nc-grp').value==='Parcelado';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc-lbl');if(v)v.textContent=on?'venc. desta parcela':'vencimento';}
 /* conta extra (única ou parcelada) lançada à mão: nunca é tratada como mensal recorrente */
 function _ehExtra(id){return (S.contasExtra||[]).some(c=>c.id===id&&c.grupo==='Extra');}
 /* vencimento + 1 mês (mantém o dia; ajusta para o último dia quando o mês é mais curto) */
 function _vencMais1(venc){const p=(''+(venc||'')).split('/').map(Number);if(p.length!==3||p.some(isNaN))return venc;let m=p[1]+1,y=p[2];if(m>12){m=1;y++;}const ult=new Date(y,m,0).getDate();const d=Math.min(p[0],ult);return String(d).padStart(2,'0')+'/'+String(m).padStart(2,'0')+'/'+y;}
-function addConta(){const desc=document.getElementById('nc-desc').value.trim(),venc=document.getElementById('nc-venc').value.trim();let valor=parseBR(document.getElementById('nc-val').value),grupo=document.getElementById('nc-grp').value;
+function addConta(){const desc=document.getElementById('nc-desc').value.trim(),venc=_isoParaBR(document.getElementById('nc-venc').value);let valor=parseBR(document.getElementById('nc-val').value),grupo=document.getElementById('nc-grp').value;
  if(!desc||isNaN(valor)){alert('Preencha a descrição e o valor.');return;}
  let parc=null;
  if(grupo==='Parcelado'){const n=parseInt(document.getElementById('nc-np').value,10);const paTxt=document.getElementById('nc-pa').value.trim();const pa=paTxt?parseInt(paTxt,10):1;
