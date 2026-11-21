@@ -409,15 +409,18 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
    <label for="l-email" style="font-size:12px;font-weight:600;color:#1e2a38">E-mail</label>
    <input id="l-email" type="email" autocomplete="username" style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:11px 12px;border:1px solid #c3ccd8;border-radius:9px;font-size:15px">
    <label for="l-senha" style="font-size:12px;font-weight:600;color:#1e2a38">Senha</label>
-   <input id="l-senha" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin:4px 0 16px;padding:11px 12px;border:1px solid #c3ccd8;border-radius:9px;font-size:15px">
+   <input id="l-senha" type="password" autocomplete="current-password" style="width:100%;box-sizing:border-box;margin:4px 0 8px;padding:11px 12px;border:1px solid #c3ccd8;border-radius:9px;font-size:15px">
+   <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:#1e2a38;margin:0 0 14px;cursor:pointer;user-select:none"><input type="checkbox" id="l-ver" style="width:17px;height:17px;margin:0"> Mostrar senha</label>
    <button id="l-btn" type="submit" style="width:100%;padding:12px;border:0;border-radius:10px;background:#1f4e78;color:#fff;font-size:15px;font-weight:700;cursor:pointer">Entrar</button>
+   <div style="text-align:center;margin-top:14px"><a href="#" id="l-esqueci" style="font-size:13px;color:#1f4e78">Esqueci a senha</a></div>
   </form>
   <form id="f-senha" style="display:none" onsubmit="return false">
-   <div style="font-size:13px;color:#1e2a38;margin-bottom:12px">Primeiro acesso: crie a sua senha (mínimo 8 caracteres).</div>
+   <div id="n-txt" style="font-size:13px;color:#1e2a38;margin-bottom:12px">Primeiro acesso: crie a sua senha (mínimo 8 caracteres).</div>
    <label for="n-senha" style="font-size:12px;font-weight:600;color:#1e2a38">Nova senha</label>
    <input id="n-senha" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:11px 12px;border:1px solid #c3ccd8;border-radius:9px;font-size:15px">
    <label for="n-senha2" style="font-size:12px;font-weight:600;color:#1e2a38">Repita a nova senha</label>
-   <input id="n-senha2" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:4px 0 16px;padding:11px 12px;border:1px solid #c3ccd8;border-radius:9px;font-size:15px">
+   <input id="n-senha2" type="password" autocomplete="new-password" style="width:100%;box-sizing:border-box;margin:4px 0 8px;padding:11px 12px;border:1px solid #c3ccd8;border-radius:9px;font-size:15px">
+   <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:#1e2a38;margin:0 0 14px;cursor:pointer;user-select:none"><input type="checkbox" id="n-ver" style="width:17px;height:17px;margin:0"> Mostrar senha</label>
    <button id="n-btn" type="submit" style="width:100%;padding:12px;border:0;border-radius:10px;background:#2e7d5b;color:#fff;font-size:15px;font-weight:700;cursor:pointer">Salvar senha e entrar</button>
   </form>
   <div id="boot-msg" style="font-size:13px;color:#c0392b;margin-top:12px;min-height:18px"></div>
@@ -437,6 +440,8 @@ var SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI
 var KEY='sistema_fin2026_v1',PEND='nuvem_pend',BASE_REV='nuvem_base_rev';
 var $=function(id){return document.getElementById(id);};
 var msg=function(t,cor){var m=$('boot-msg');m.style.color=cor||'#c0392b';m.textContent=t||'';};
+/* voltou do link “Esqueci a senha” do e-mail? (o supabase limpa o # da URL logo depois, por isso lê antes) */
+var HASH0=String(location.hash||''),RECUP=/type=recovery/.test(HASH0),LINK_RUIM=/error(_code|_description)?=/.test(HASH0);
 if(!window.supabase){$('boot-sub').textContent='Não consegui carregar. Confira a internet e recarregue a página.';return;}
 var SB=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
 var _set=Storage.prototype.setItem;
@@ -504,6 +509,7 @@ async function carregarPainel(){
   document.addEventListener('visibilitychange',function(){if(!document.hidden)conferir();});
 }
 async function depoisDoLogin(user){
+  if(RECUP){$('boot-sub').textContent='Redefinir a senha';$('n-txt').textContent='Crie a sua nova senha (mínimo 8 caracteres).';$('f-login').style.display='none';$('f-senha').style.display='block';msg('');$('n-senha').focus();return;}
   if(user&&user.user_metadata&&user.user_metadata.trocar_senha){
     $('boot-sub').textContent='Bem-vindo!';$('f-login').style.display='none';$('f-senha').style.display='block';$('n-senha').focus();return;}
   carregarPainel();
@@ -534,7 +540,20 @@ $('n-btn').onclick=async function(){
   this.disabled=true;msg('Salvando…','#6b7787');
   var r=await SB.auth.updateUser({password:a,data:{trocar_senha:false}});this.disabled=false;
   if(r.error){msg('Não consegui salvar a senha: '+r.error.message);return;}
+  if(RECUP){RECUP=false;try{await SB.rpc('login_ok');}catch(e){}}
   carregarPainel();
+};
+/* mostrar / esconder a senha digitada (por opção do usuário) */
+$('l-ver').onchange=function(){$('l-senha').type=this.checked?'text':'password';};
+$('n-ver').onchange=function(){var t=this.checked?'text':'password';$('n-senha').type=t;$('n-senha2').type=t;};
+/* esqueci a senha: manda por e-mail um link que volta para esta página e abre “crie a sua nova senha” */
+$('l-esqueci').onclick=async function(ev){ev.preventDefault();
+  var em=$('l-email').value.trim();if(!em){msg('Digite o seu e-mail no campo acima e toque de novo em “Esqueci a senha”.');$('l-email').focus();return;}
+  if(this.dataset.env==='1')return;this.dataset.env='1';msg('Enviando…','#6b7787');
+  var r={};try{r=await SB.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname});}catch(e){r={error:e};}
+  this.dataset.env='';
+  if(r.error){msg(/rate|limit|seconds/i.test(r.error.message||'')?'Já pedi um link há pouco. Espere alguns minutos e tente de novo.':'Não consegui enviar o e-mail: '+(r.error.message||'tente de novo'));return;}
+  msg('Se esse é o e-mail cadastrado, enviei um link para criar uma senha nova. Abra o e-mail neste aparelho e toque no link (confira também o spam).','#2e7d5b');
 };
 $('nuvem-st').onclick=function(){agendar();};
 $('nuvem-sair').onclick=async function(){
@@ -544,7 +563,8 @@ $('nuvem-sair').onclick=async function(){
 function iniciar(){SB.auth.getSession().then(function(r){
   var s=r&&r.data&&r.data.session;
   if(s)depoisDoLogin(s.user);
-  else{$('boot-sub').textContent='Entre com o seu e-mail e senha.';$('f-login').style.display='block';$('l-email').focus();}
+  else{$('boot-sub').textContent='Entre com o seu e-mail e senha.';$('f-login').style.display='block';$('l-email').focus();
+    if(RECUP||LINK_RUIM){RECUP=false;msg('O link do e-mail expirou ou já foi usado. Toque em “Esqueci a senha” para receber outro.');}}
 });}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',iniciar);else iniciar();
 })();
@@ -556,6 +576,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.10.0',em:'21/11/2026 16:55',mudou:['Tela de entrada: opção “Mostrar senha” (na senha do login e ao criar senha nova)','Tela de entrada: “Esqueci a senha” — envia um link por e-mail para criar uma senha nova']},
  {v:'2.9.1',em:'20/11/2026 15:05',mudou:['Nota de fornecedor: ao marcar como paga em Contas a pagar, a lista de “Contratação de terceiros” passa a mostrar “pago” com a data (e “parcela 1/3 paga” quando for parcelado); o PDF do fechamento também']},
  {v:'2.9.0',em:'20/11/2026 14:45',mudou:['Nota de fornecedor (meu CNPJ é o tomador): ao arrastar o PDF, abre sozinho um item em Contas a pagar com o nº da nota, o fornecedor e o valor, e o formulário já abre para definir vencimento e se é cota única ou parcelado','Notas de terceiros que já estavam na lista ganharam o atalho “+ lançar em contas a pagar”']},
  {v:'2.8.0',em:'20/11/2026 14:30',mudou:['Mais de um cartão de crédito: em “+ nova conta” escolha “Cartão de crédito”, dê uma identificação (ex.: Itaú final 1234), o vencimento e a fatura do mês — ele passa a aparecer todo mês','O cartão que já existia também ganhou identificação e dia de vencimento: é só clicar em “editar”','Todos os cartões somam em “Cartão” nos totais e na previsão do mês seguinte']},
