@@ -193,12 +193,14 @@ body.discreet .bar-fill{color:rgba(255,255,255,.30) !important}
      <button class="addbtn" onclick="novaContaForm()">+ nova conta</button>
      <div class="miniform" id="form-conta">
        <input id="nc-desc" placeholder="descrição" style="flex:1;min-width:150px">
-       <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span id="nc-venc-lbl">vencimento</span><input type="date" id="nc-venc" style="width:150px" title="Clique no ícone do calendário para escolher a data, ou digite"></label>
+       <label id="nc-venc-wrap" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span id="nc-venc-lbl">vencimento</span><input type="date" id="nc-venc" style="width:150px" title="Clique no ícone do calendário para escolher a data, ou digite"></label>
        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span id="nc-val-lbl">valor R$</span><input id="nc-val" inputmode="decimal" placeholder="0,00" style="width:120px;text-align:right;font-weight:600" onblur="ncValBlur(this)" oninput="this.value=this.value.replace(/[^0-9.,]/g,'');ncPrev()" title="Digite o valor; ao sair do campo ele é formatado como dinheiro (ex.: 35000 vira 35.000,00)"></label>
-       <select id="nc-grp" onchange="ncGrpChange()" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só · Parcelado = custo comprado em parcelas, some depois da última · Cartão de crédito = fatura de mais um cartão, todo mês"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option><option value="Parcelado">Parcelado (custo extra)</option><option value="Cartao">Cartão de crédito</option></select>
+       <select id="nc-grp" onchange="ncGrpChange()" title="Fixo = repete todo mês · Imposto = entra na previsão de impostos · Único = paga uma vez só · Parcelado = custo comprado em parcelas, some depois da última · Compra paga no cartão = não vira conta a pagar: entra dentro da fatura do cartão, parcela por parcela · Cartão de crédito = fatura de mais um cartão, todo mês"><option>Fixo</option><option>Imposto</option><option value="Extra">Único (custo extra)</option><option value="Parcelado">Parcelado (custo extra)</option><option value="NoCartao">Compra paga no cartão de crédito</option><option value="Cartao">Cartão de crédito (cadastrar outro cartão)</option></select>
+       <label class="nc-cc" style="display:none;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span>cartão</span><select id="nc-card" title="Em qual cartão a compra foi feita"></select></label>
        <input id="nc-np" class="nc-parc" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'');ncPrev()" placeholder="nº de parcelas" style="width:105px;display:none" title="Em quantas parcelas foi contratado">
        <select id="nc-modo" class="nc-parc" onchange="ncPrev()" style="display:none" title="O valor digitado é de cada parcela ou é o total da compra?"><option value="total">o valor é o total (dividir pelas parcelas)</option><option value="parc">o valor é de cada parcela</option></select>
        <input id="nc-pa" class="nc-parc" placeholder="já está na parcela nº (1)" style="width:165px;display:none" title="Deixe em branco se esta é a 1ª parcela. Se a compra já está em andamento, informe qual parcela vence agora.">
+       <label class="nc-cc" style="display:none;align-items:center;gap:5px;font-size:12px;color:var(--muted)"><span>1ª parcela na fatura de</span><select id="nc-m0" title="Mês da fatura em que a compra (ou a 1ª parcela) aparece"></select></label>
        <div id="nc-prev" style="display:none;flex-basis:100%;font-size:13px;background:#efe7f8;color:#4a2a78;border-radius:7px;padding:7px 10px"></div>
        <button id="nc-btn" onclick="addConta()">Adicionar</button>
        <button id="nc-cancel" onclick="ncCancelar()" style="display:none;background:#8492a6">Cancelar</button>
@@ -576,6 +578,7 @@ const A=RAW.annual, C=RAW.current, t=A.tot, ir=A.irpfm;
 const KEY='sistema_fin2026_v1';
 /* ===== VERSÃO DO PAINEL — atualizar a cada mudança (nº, data/hora e o que mudou) ===== */
 const VERSOES=[
+ {v:'2.11.0',em:'23/11/2026 13:30',mudou:['Notas de compra de produto (DANFE / NF-e): o painel agora lê o VALOR TOTAL DA NOTA, o número e o nome do fornecedor (antes pegava o valor dos tributos)','Novo tipo “Compra paga no cartão de crédito”: a compra não vira conta a pagar — fica dentro do cartão escolhido, com o nº de parcelas e a fatura em que começa','Na linha de cada cartão aparecem as compras/parcelas que caem naquela fatura e a soma delas','Na lista de notas de fornecedor, a compra aparece como “no cartão · 10× · fatura de …”']},
  {v:'2.10.0',em:'21/11/2026 16:55',mudou:['Tela de entrada: opção “Mostrar senha” (na senha do login e ao criar senha nova)','Tela de entrada: “Esqueci a senha” — envia um link por e-mail para criar uma senha nova']},
  {v:'2.9.1',em:'20/11/2026 15:05',mudou:['Nota de fornecedor: ao marcar como paga em Contas a pagar, a lista de “Contratação de terceiros” passa a mostrar “pago” com a data (e “parcela 1/3 paga” quando for parcelado); o PDF do fechamento também']},
  {v:'2.9.0',em:'20/11/2026 14:45',mudou:['Nota de fornecedor (meu CNPJ é o tomador): ao arrastar o PDF, abre sozinho um item em Contas a pagar com o nº da nota, o fornecedor e o valor, e o formulário já abre para definir vencimento e se é cota única ou parcelado','Notas de terceiros que já estavam na lista ganharam o atalho “+ lançar em contas a pagar”']},
@@ -701,7 +704,7 @@ async function initCloud(){
 function _temDados(){ try{ return (S.notasExtra&&S.notasExtra.length)|| (S.pagos&&Object.keys(S.pagos).length)|| (S.parcelamentos&&S.parcelamentos.length)|| (S.transfList&&S.transfList.length)|| (S.mesesArquivo&&Object.keys(S.mesesArquivo).length)|| (S.valores&&Object.keys(S.valores).length)|| (S.contasExtra&&S.contasExtra.length); }catch(e){return false;} }
 let S=load(); if(!S.pagos)S.pagos={}; if(!S.recebidos)S.recebidos={}; if(!S.arquivados)S.arquivados={};
 if(!S.notasExtra)S.notasExtra=[]; if(!S.terceiros)S.terceiros=[];
-if(!S._seedT48){S._seedT48=1;if(!S.terceiros.some(t=>t.n==='48'&&/25499854/.test((t.cnpj||'').replace(/\D/g,''))))S.terceiros.push({n:'48',forn:'BELLA COMERCIO VAREJISTA E PRESTACAO DE SERVICOS LTDA',cnpj:'25.499.854/0002-76',valor:3500,data:'06/10/2026',mes:'Out',k:'tc48_bella'});} if(!S.contasExtra)S.contasExtra=[]; if(!S.valores)S.valores={}; if(!S.parcHist)S.parcHist={};
+if(!S._seedT48){S._seedT48=1;if(!S.terceiros.some(t=>t.n==='48'&&/25499854/.test((t.cnpj||'').replace(/\D/g,''))))S.terceiros.push({n:'48',forn:'BELLA COMERCIO VAREJISTA E PRESTACAO DE SERVICOS LTDA',cnpj:'25.499.854/0002-76',valor:3500,data:'06/10/2026',mes:'Out',k:'tc48_bella'});} if(!S.contasExtra)S.contasExtra=[]; if(!S.comprasCartao)S.comprasCartao=[]; if(!S.valores)S.valores={}; if(!S.parcHist)S.parcHist={};
 if(!S.removidosC)S.removidosC={}; if(!S.removidosN)S.removidosN={}; if(!S.atrasadosExtra)S.atrasadosExtra=[];
 if(S.saldo==null)S.saldo=63902.42; /* saldo bancário inicial (fim jul) — atualizável */
 if(!S.transfList)S.transfList=[]; /* linhas de transferência à PF (divisão de lucro) */
@@ -1171,7 +1174,7 @@ function contaHTML(c){const paid=!!S.pagos[c.id];const vc=vClass(c.venc);const o
  return `<div class="item ${paid?'paid':''} ${over?'atrasada':''}"><div class="chk ${paid?'on':''}" onclick="togglePago('${c.id}')"></div>
   <div class="body"><div class="nm">${c.desc}</div><div class="meta">
    ${c.grupo?`<span class="tag ${tagGrupo[c.grupo]||'rec'}">${c.grupo==='Extra'?(c.parc?'parcelado':'único'):c.grupo}</span>`:''}${c.fonte?`<span class="tag ${tagFonte[c.fonte]||'rec'}">${c.fonte}</span>`:''}
-   ${c.venc?`<span class="venc ${vc}">📅 ${c.venc}</span>`:''}${over?'<span class="badge-atraso">ATRASADA</span>':''}<span class="status ${paid?'ok':'open'}">${paid?'✓ pago':'em aberto'}</span>${paid&&!c.fromAtraso?`<span class="venc" style="color:var(--green)">💰 pago ${S.pagoData[c.id]||hojeBR()}</span><button class="arqbtn" onclick="editarPagoData('${c.id}')" title="Mudar a data do pagamento">✏ data</button>`:''}${acao}</div></div>
+   ${c.venc?`<span class="venc ${vc}">📅 ${c.venc}</span>`:''}${over?'<span class="badge-atraso">ATRASADA</span>':''}<span class="status ${paid?'ok':'open'}">${paid?'✓ pago':'em aberto'}</span>${paid&&!c.fromAtraso?`<span class="venc" style="color:var(--green)">💰 pago ${S.pagoData[c.id]||hojeBR()}</span><button class="arqbtn" onclick="editarPagoData('${c.id}')" title="Mudar a data do pagamento">✏ data</button>`:''}${acao}</div>${_ccHTML(c)}</div>
   <div class="val">${brl(c.valor)}</div></div>`;}
 function notaHTML(n){const rec=!!S.recebidos[n.k];
  return `<div class="item"><div class="chk ${rec?'on':''}" onclick="toggleReceb('${n.k}')"></div>
@@ -1283,6 +1286,27 @@ function ncValBlur(el){const n=_parseValor(el.value);if(!isNaN(n))el.value=fmt(n
 function _ehCartaoId(id){id=''+id;return id==='cartaocredito'||id.indexOf('xcc')===0;}
 /* identificação do cartão: nunca guarda o número inteiro — sequência longa de dígitos vira "final 1234" */
 function _identCartao(t){return (''+(t||'')).replace(/(?:\d[ .\-]?){12,19}/g,m=>'final '+m.replace(/\D/g,'').slice(-4)+' ').replace(/\s+/g,' ').trim();}
+/* ===== compras pagas no cartão de crédito: não são conta a pagar — o que sai do caixa é a fatura do cartão; aqui fica o controle de qual parcela cai em qual fatura ===== */
+function _ymAtual(){const p=(C.mesref||'Agosto/2026').split('/');const i=MFULL.indexOf(p[0]);return (+p[1]||2026)*12+(i<0?7:i);}
+function _ymLabel(ym){return MFULL[ym%12].toLowerCase()+'/'+Math.floor(ym/12);}
+function _cartoesLista(){return getContas().filter(c=>_ehCartaoId(c.id)&&!c.fromAtraso).map(c=>({id:c.id,nome:c.ident||(c.id==='cartaocredito'?'cartão de crédito (sem identificação)':'cartão')}));}
+function _cartaoNome(cid){const c=_cartoesLista().find(x=>x.id===cid);return c?c.nome:'cartão removido';}
+function _comprasCartaoMes(cid,ym){ym=(ym==null?_ymAtual():ym);return (S.comprasCartao||[]).filter(x=>x.cid===cid).map(x=>{const k=ym-x.m0+1;return (k>=1&&k<=x.n)?{x,k,v:+x.vals[k-1]||0}:null;}).filter(Boolean);}
+function _ccHTML(c){if(!_ehCartaoId(c.id)||c.fromAtraso)return '';const ym=_ymAtual(),agora=_comprasCartaoMes(c.id,ym),fut=(S.comprasCartao||[]).filter(x=>x.cid===c.id&&x.m0>ym);if(!agora.length&&!fut.length)return '';
+ const bt=x=>' <a href="#" onclick="abrirEdicaoCompra(\''+x.id+'\');return false" title="Editar esta compra">✏</a> <a href="#" onclick="removerCompraCartao(\''+x.id+'\');return false" title="Remover esta compra" style="color:var(--muted)">🗑</a>';
+ let h='<div style="margin-top:7px;font-size:12px;color:#4a2a78;background:#f6f1fb;border-radius:7px;padding:7px 10px;line-height:1.55">';
+ if(agora.length){h+='<b>💳 Compras lançadas nesta fatura: '+brl(agora.reduce((a,o)=>a+o.v,0))+'</b>'+agora.map(o=>'<div>'+o.x.desc+' — '+(o.x.n>1?'parcela '+o.k+'/'+o.x.n:'à vista')+' · '+brl(o.v)+bt(o.x)+'</div>').join('');}
+ if(fut.length){h+='<div style="'+(agora.length?'margin-top:5px;':'')+'color:#6b7787"><b>Entram nas próximas faturas:</b></div>'+fut.map(x=>'<div style="color:#6b7787">'+x.desc+' — '+(x.n>1?x.n+'× de '+brl(+x.vals[0]||0):brl(+x.vals[0]||0)+' à vista')+' · a partir de '+_ymLabel(x.m0)+bt(x)+'</div>').join('');}
+ return h+'</div>';}
+function removerCompraCartao(id){const x=(S.comprasCartao||[]).find(c=>c.id===id);if(!x||!confirm('Remover esta compra do cartão?'+(x.n>1?' Todas as parcelas saem.':'')))return;
+ S.comprasCartao=S.comprasCartao.filter(c=>c.id!==id);if(x.tk){const t=(S.terceiros||[]).find(t=>t.k===x.tk);if(t)delete t.lanc;}persist();renderMes();try{renderTerceiros();}catch(e){}}
+function abrirEdicaoCompra(id){const x=(S.comprasCartao||[]).find(c=>c.id===id);if(!x)return;ncLimpar();NC_EDIT='cc:'+id;const g=i=>document.getElementById(i);
+ g('nc-desc').value=x.desc||'';g('nc-grp').value='NoCartao';g('nc-grp').disabled=true;g('nc-val').value=fmt(x.total);g('nc-np').value=x.n;g('nc-modo').value='total';ncGrpChange();
+ if(![...g('nc-card').options].some(o=>o.value===x.cid)){const o=document.createElement('option');o.value=x.cid;o.textContent=_cartaoNome(x.cid);g('nc-card').appendChild(o);}g('nc-card').value=x.cid;
+ if(![...g('nc-m0').options].some(o=>+o.value===x.m0)){const o=document.createElement('option');o.value=x.m0;o.textContent=_ymLabel(x.m0);g('nc-m0').insertBefore(o,g('nc-m0').firstChild);}g('nc-m0').value=x.m0;
+ g('nc-btn').textContent='Salvar alterações';g('nc-cancel').style.display='';ncPrev(true);
+ const ins=document.querySelectorAll('.nc-pv');if(ins.length===x.n){ins.forEach((e,i)=>{e.value=fmt(+x.vals[i]||0);});ncPvSoma();}
+ const f=g('form-conta');f.style.display='flex';try{f.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){}}
 let NC_EDIT=null; /* id da conta manual em edição no formulário (null = lançando conta nova) */
 function ncLimpar(){NC_EDIT=null;['nc-desc','nc-venc','nc-val','nc-np','nc-pa'].forEach(i=>{document.getElementById(i).value='';});const gs=document.getElementById('nc-grp');gs.disabled=false;[...gs.options].forEach(o=>{o.disabled=false;});gs.value='Fixo';document.getElementById('nc-modo').value='total';NC_PREVKEY='';document.getElementById('nc-btn').textContent='Adicionar';document.getElementById('nc-cancel').style.display='none';ncGrpChange();}
 function novaContaForm(){const el=document.getElementById('form-conta');const abrir=(el.style.display!=='flex')||!!NC_EDIT;ncLimpar();el.style.display=abrir?'flex':'none';}
@@ -1303,7 +1327,7 @@ function abrirEdicaoConta(id){let c=(S.contasExtra||[]).find(x=>x.id===id);
 /* mostra na hora o valor de cada parcela e o total, conforme o que foi digitado */
 function _parcVal(c,k){const p=c.parc;if(!p)return c.valor;if(p.vals&&p.vals[k-1]!=null)return p.vals[k-1];if(p.ult!=null&&k>=p.n)return p.ult;return c.valor;}
 let NC_PREVKEY='';
-function ncPrev(force){const el=document.getElementById('nc-prev');if(!el)return;const on=document.getElementById('nc-grp').value==='Parcelado';const v=_parseValor(document.getElementById('nc-val').value),n=parseInt(document.getElementById('nc-np').value,10),modo=document.getElementById('nc-modo').value;
+function ncPrev(force){const el=document.getElementById('nc-prev');if(!el)return;const on=/^(Parcelado|NoCartao)$/.test(document.getElementById('nc-grp').value);const v=_parseValor(document.getElementById('nc-val').value),n=parseInt(document.getElementById('nc-np').value,10),modo=document.getElementById('nc-modo').value;
  if(!on||isNaN(v)||!(v>0)||!(n>=2)||n>120){el.style.display='none';el.innerHTML='';NC_PREVKEY='';return;}
  const key=v+'|'+n+'|'+modo;if(!force&&key===NC_PREVKEY)return; /* só refaz a divisão quando muda valor, nº de parcelas ou o modo — não apaga ajustes feitos à mão */
  NC_PREVKEY=key;const vals=[];if(modo==='total'){const vp=Math.floor(v/n*100)/100;for(let k=1;k<=n;k++)vals.push(k<n?vp:+(v-vp*(n-1)).toFixed(2));}else for(let k=1;k<=n;k++)vals.push(v);
@@ -1316,14 +1340,36 @@ function ncPvSoma(){const t=document.getElementById('nc-pv-tot');if(!t)return;le
  if(!ok){t.innerHTML='<span style="color:var(--red)">Preencha o valor de todas as parcelas.</span>';return;}
  const v=_parseValor(document.getElementById('nc-val').value),modo=document.getElementById('nc-modo').value;const dif=(modo==='total'&&!isNaN(v))?+(soma-v).toFixed(2):0;
  t.innerHTML='Soma das parcelas: <b>R$ '+fmt(soma)+'</b>'+(Math.abs(dif)>=0.01?' <span style="color:var(--red)">('+(dif>0?'R$ '+fmt(dif)+' a mais':'R$ '+fmt(-dif)+' a menos')+' que o total digitado)</span>':'');}
-function ncGrpChange(){const gv=document.getElementById('nc-grp').value,on=gv==='Parcelado',card=gv==='Cartao';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=on?'':'none';});const v=document.getElementById('nc-venc-lbl');if(v)v.textContent=on?'venc. desta parcela':(card?'vencimento da fatura':'vencimento');
- const d=document.getElementById('nc-desc');d.placeholder=card?'identificação do cartão (ex.: Itaú final 1234)':'descrição';d.title=card?'Um nome para reconhecer o cartão: banco, bandeira e os 4 últimos dígitos. Não coloque o número inteiro.':'';
+function ncGrpChange(){const gv=document.getElementById('nc-grp').value,on=gv==='Parcelado',card=gv==='Cartao',cc=gv==='NoCartao';document.querySelectorAll('.nc-parc').forEach(e=>{e.style.display=(on||cc)&&!(cc&&e.id==='nc-pa')?'':'none';});
+ document.querySelectorAll('.nc-cc').forEach(e=>{e.style.display=cc?'flex':'none';});document.getElementById('nc-venc-wrap').style.display=cc?'none':'flex';
+ if(cc){const sc=document.getElementById('nc-card'),keep=sc.value,L=_cartoesLista();sc.innerHTML=L.map(c=>'<option value="'+c.id+'">'+c.nome+'</option>').join('');if(L.some(c=>c.id===keep))sc.value=keep;
+  const sm=document.getElementById('nc-m0'),km=sm.value,ya=_ymAtual();let o='';for(let y=ya-11;y<=ya+3;y++)o+='<option value="'+y+'">'+_ymLabel(y)+(y===ya?' (esta fatura)':'')+'</option>';sm.innerHTML=o;sm.value=(km&&+km>=ya-11&&+km<=ya+3)?km:String(ya+1);}
+ const v=document.getElementById('nc-venc-lbl');if(v)v.textContent=on?'venc. desta parcela':(card?'vencimento da fatura':'vencimento');
+ const d=document.getElementById('nc-desc');d.placeholder=card?'identificação do cartão (ex.: Itaú final 1234)':(cc?'o que foi comprado (ex.: NF 41 — Tecno Eletrônicos)':'descrição');document.getElementById('nc-np').placeholder=cc?'nº de parcelas (1 = à vista)':'nº de parcelas';d.title=card?'Um nome para reconhecer o cartão: banco, bandeira e os 4 últimos dígitos. Não coloque o número inteiro.':'';
  const vl=document.getElementById('nc-val-lbl');if(vl)vl.textContent=card?'fatura do mês R$':'valor R$';ncPrev();}
 /* conta extra (única ou parcelada) lançada à mão: nunca é tratada como mensal recorrente */
 function _ehExtra(id){return (S.contasExtra||[]).some(c=>c.id===id&&c.grupo==='Extra');}
 /* vencimento + 1 mês (mantém o dia; ajusta para o último dia quando o mês é mais curto) */
 function _vencMais1(venc){const p=(''+(venc||'')).split('/').map(Number);if(p.length!==3||p.some(isNaN))return venc;let m=p[1]+1,y=p[2];if(m>12){m=1;y++;}const ult=new Date(y,m,0).getDate();const d=Math.min(p[0],ult);return String(d).padStart(2,'0')+'/'+String(m).padStart(2,'0')+'/'+y;}
 function addConta(){let desc=document.getElementById('nc-desc').value.trim();const venc=_isoParaBR(document.getElementById('nc-venc').value);let valor=_parseValor(document.getElementById('nc-val').value),grupo=document.getElementById('nc-grp').value;
+ if(grupo==='NoCartao'){/* compra paga no cartão: guarda a compra dentro do cartão (parcela por fatura) e NÃO cria conta a pagar */
+  if(!desc||!(valor>0)){alert('Preencha o que foi comprado e o valor.');return;}
+  const cid=document.getElementById('nc-card').value;if(!cid){alert('Não achei nenhum cartão cadastrado. Cadastre o cartão primeiro.');return;}
+  const npT=document.getElementById('nc-np').value.trim(),n=npT?parseInt(npT,10):1;if(!(n>=1&&n<=120)){alert('Informe em quantas parcelas foi a compra (1 = à vista).');return;}
+  const m0=parseInt(document.getElementById('nc-m0').value,10)||(_ymAtual()+1);const modo=document.getElementById('nc-modo').value;
+  let vals=[];if(n>=2){ncPrev();document.querySelectorAll('.nc-pv').forEach(e=>{vals.push(_parseValor(e.value));});}
+  if(vals.length!==n){vals=[];if(modo==='total'){const vp=Math.floor(valor/n*100)/100;for(let k=1;k<=n;k++)vals.push(k<n?vp:+(valor-vp*(n-1)).toFixed(2));}else for(let k=1;k<=n;k++)vals.push(valor);}
+  if(vals.some(x=>isNaN(x)||x<0)){alert('Confira o valor de cada parcela.');return;}
+  vals=vals.map(x=>+x.toFixed(2));const total=+vals.reduce((a,b)=>a+b,0).toFixed(2);
+  if(NC_EDIT&&(''+NC_EDIT).indexOf('cc:')===0){const x=S.comprasCartao.find(c=>c.id===NC_EDIT.slice(3));if(x){x.desc=desc;x.cid=cid;x.n=n;x.vals=vals;x.total=total;x.m0=m0;}}
+  else{const nova={id:'cp'+Date.now().toString(36)+Math.floor(Math.random()*1e4),desc,cid,n,vals,total,m0};
+   const ed0=NC_EDIT?(S.contasExtra||[]).find(x=>x.id===NC_EDIT):null;
+   if(ed0){/* era uma conta a pagar (ex.: nota arrastada): sai de Contas a pagar e passa para dentro do cartão */
+    if(S.pagos[ed0.id]){const ef=(getContas().find(x=>x.id===ed0.id)||{}).valor||0;S.saldo+=ef;delete S.pagos[ed0.id];if(S.pagoData)delete S.pagoData[ed0.id];}
+    if(ed0.tk){nova.tk=ed0.tk;const t=(S.terceiros||[]).find(t=>t.k===ed0.tk);if(t){t.lanc=true;if(t.pg&&t.pg.cid===ed0.id)delete t.pg;}}
+    S.contasExtra=S.contasExtra.filter(x=>x.id!==ed0.id);if(S.valores)delete S.valores[ed0.id];if(S.periodic)delete S.periodic[ed0.id];}
+   S.comprasCartao.push(nova);}
+  persist();ncLimpar();document.getElementById('form-conta').style.display='none';renderSaldo();renderMes();renderKpisMes();try{renderTerceiros();}catch(e){}return;}
  const ehCard=grupo==='Cartao';
  if(ehCard){/* cartão de crédito: identificação + dia do vencimento; a fatura do mês pode ficar em branco (0) e ser ajustada depois */
   desc=_identCartao(desc);if(isNaN(valor))valor=0;
@@ -1378,6 +1424,9 @@ function _clientesConhecidos(){const map={};
 /* DANFSe em que o Eduardo é o TOMADOR (o 1º CNPJ do documento — o do prestador — não é o dele) */
 function _tomadaDANFSe(txt){const T=(txt||'').replace(/\s+/g,' ');const docs=T.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}/g)||[];
  if(!docs.length||docs[0].replace(/\D/g,'')==='28423619000128'||!docs.some(x=>x.replace(/\D/g,'')==='28423619000128'))return null;
+ /* DANFE (NF-e de compra de produto): layout diferente da nota de serviço — valor = VALOR TOTAL DA NOTA */
+ {const nfe=_parseDANFE(T);if(nfe){const dm0=(nfe.data||'').match(/^\d{2}\/(\d{2})\/(\d{4})$/);
+   return {n:nfe.n||'—',forn:nfe.forn||('CNPJ '+docs[0]),cnpj:docs[0],valor:nfe.valor,data:nfe.data||'',mes:dm0?MORDER[+dm0[1]-1]:mesKeyCorrente(),k:'tc'+Date.now()+'_'+(nfe.n||'')+'_'+Math.floor(Math.random()*1e4)};}}
  const d=_parseDANFSe(txt);let forn='';
  const pi=T.search(/PRESTADOR/i),ti=T.search(/TOMADOR/i);
  if(pi>=0){const seg=T.slice(pi,ti>pi?ti:pi+600);const nm=seg.match(/Nome\s*\/\s*Nome Empresarial\s*(?:Munic[íi]pio\s*\/\s*Sigla UF\s*)?(?:C[óo]digo IBGE\s*\/\s*CEP\s*)?([A-ZÀ-Ú0-9&.\- ]{3,90}?)\s+(?:[A-ZÀ-Ú ]+ - [A-Z]{2}\b|Endere|Munic|E-?mail)/i);void nm;}
@@ -1387,6 +1436,15 @@ function _tomadaDANFSe(txt){const T=(txt||'').replace(/\s+/g,' ');const docs=T.m
  let val=isNaN(d.bruto)?d.liq:d.bruto;
  if(!(val>0)){const vs=(T.match(/R\$\s*[\d\.]+,\d{2}/g)||[]).map(x=>parseBR(x.replace(/R\$\s*/,'')));if(vs.length)val=Math.max(...vs);}const dm=(d.data||'').match(/^\d{2}\/(\d{2})\/(\d{4})$/);
  return {n:d.n||'—',forn,cnpj:docs[0],valor:+val||0,data:d.data||'',mes:dm?MORDER[+dm[1]-1]:mesKeyCorrente(),k:'tc'+Date.now()+'_'+(d.n||'')};}
+function _parseDANFE(T){if(!/DANFE|Nota Fiscal Eletr[ôo]nica/i.test(T)||/NFS-?e/i.test(T))return null;
+ const i=T.search(/VALOR TOTAL DA NOTA/i);if(i<0)return null;const rest=T.slice(i+19);const j=rest.search(/C[ÁA]LCULO DO IMPOSTO|TRANSPORTADOR|DADOS DO PRODUTO/i);
+ const nums=((j>=0?rest.slice(0,j):rest.slice(0,300)).match(/\d[\d.]*,\d{2}/g)||[]).map(parseBR).filter(x=>!isNaN(x));if(!nums.length)return null;
+ /* quando o PDF traz os 11 números do quadro de impostos em sequência, o total da nota é o 10º; quando o número vem logo depois do rótulo, é o 1º */
+ let valor=nums.length>=10?nums[9]:nums[0];if(!(valor>0))valor=Math.max(...nums);if(!(valor>0))return null;
+ const nm=T.match(/\b(\d{3}\.\d{3}\.\d{3})\b(?![\/\-]\d)/);const n=nm?String(parseInt(nm[1].replace(/\D/g,''),10)):'';
+ const fm=T.match(/RECEBEMOS DE (.+?) OS PRODUTOS/i);const forn=fm?fm[1].replace(/\s+\d{11,14}$/,'').replace(/\s+/g,' ').trim().toUpperCase():'';
+ const dt=(T.match(/(\d{2}\/\d{2}\/\d{4})/)||[])[1]||'';
+ return {n,forn,valor:+valor.toFixed(2),data:dt};}
 function _parseDANFSe(txt){const T=(txt||'').replace(/\s+/g,' ');
   const num=(T.match(/N[úu]mero da NFS-?e\s*:?\s*(\d{1,7})\b/i)||T.match(/N[úu]mero da NFS-?e\s*Compet[êe]ncia da NFS-?e\s*Data e Hora da emiss[ãa]o da NFS-?e\s*(\d{1,7})\b/i)||[])[1]||'';
   /* BRUTO = valor cheio da nota. Layout antigo: "Valor do Serviço"; layout novo do Emissor Nacional: "VALOR DA OPERAÇÃO / SERVIÇO" */
@@ -2394,7 +2452,7 @@ function _pagtoTerceiro(t){for(const k of MORDER){const R=RAWL[k]&&RAWL[k].rows;
 function renderTerceiros(){const el=document.getElementById('lista-terceiros');if(!el)return;const L=(S.terceiros||[]).slice().sort((a,b)=>MORDER.indexOf(a.mes)-MORDER.indexOf(b.mes)||(+a.n||0)-(+b.n||0));
  if(!L.length){el.innerHTML='<div class="desc">Nenhuma nota de terceiro ainda.</div>';return;}
  el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11.5px"><tr style="color:var(--muted);text-align:left"><th>Mês</th><th>NF</th><th>Fornecedor</th><th style="text-align:right">Valor</th><th>Pagamento</th><th></th></tr>'+
-  L.map(t=>{const p=_pagtoTerceiroQualquer(t);return `<tr style="border-top:1px solid var(--line)"><td>${FULL[t.mes]||t.mes||''}</td><td>${t.n}</td><td>${t.forn}</td><td style="text-align:right">${brl(t.valor)}</td><td>${p&&p.total?'<span style="color:var(--green)"'+(p.painel?' title="Marcado como pago em Contas a pagar"':'')+'>✓ '+p.txt+'</span>':(p?'<span style="color:var(--green)">✓ '+p.txt+'</span>':'<span style="color:#b58a00">não achei no extrato</span>')+(((S.contasExtra||[]).some(c=>c.tk===t.k))?' <a href="#" onclick="lancarTerceiroEmContas(\''+t.k+'\',true);return false" style="white-space:nowrap">✏ em contas a pagar</a>':(t.lanc?'':' <a href="#" onclick="lancarTerceiroEmContas(\''+t.k+'\',true);return false" style="white-space:nowrap">+ lançar em contas a pagar</a>'))}</td><td><a href="#" onclick="removerTerceiro('${t.k}');return false" style="color:var(--muted)">✕</a></td></tr>`;}).join('')+'</table>';}
+  L.map(t=>{const p=_pagtoTerceiroQualquer(t);return `<tr style="border-top:1px solid var(--line)"><td>${FULL[t.mes]||t.mes||''}</td><td>${t.n}</td><td>${t.forn}</td><td style="text-align:right">${brl(t.valor)}</td><td>${p&&p.total?'<span style="color:var(--green)"'+(p.painel?' title="Marcado como pago em Contas a pagar"':'')+'>'+(p.cartao?'':'✓ ')+p.txt+'</span>'+(p.cartao?' <a href="#" onclick="abrirEdicaoCompra(\''+p.cartao+'\');return false">✏</a>':''):(p?'<span style="color:var(--green)">✓ '+p.txt+'</span>':'<span style="color:#b58a00">não achei no extrato</span>')+(((S.contasExtra||[]).some(c=>c.tk===t.k))?' <a href="#" onclick="lancarTerceiroEmContas(\''+t.k+'\',true);return false" style="white-space:nowrap">✏ em contas a pagar</a>':(t.lanc?'':' <a href="#" onclick="lancarTerceiroEmContas(\''+t.k+'\',true);return false" style="white-space:nowrap">+ lançar em contas a pagar</a>'))}</td><td><a href="#" onclick="removerTerceiro('${t.k}');return false" style="color:var(--muted)">✕</a></td></tr>`;}).join('')+'</table>';}
 /* cria em Contas a pagar o item de uma nota de terceiro (tomador = eu). Nasce como “único”; pelo editar vira parcelado. Não cria se já foi lançada ou se o pagamento já aparece no extrato. */
 /* leva para a nota de terceiro o pagamento marcado em Contas a pagar (ou em Atrasados), para a lista de terceiros mostrar “pago” */
 function _syncTerceiroPago(){const T=S.terceiros||[];if(!T.length)return;
@@ -2404,9 +2462,12 @@ function _syncTerceiroPago(){const T=S.terceiros||[];if(!T.length)return;
  (S.atrasadosExtra||[]).forEach(c=>{if(!c.tk)return;const t=T.find(x=>x.k===c.tk);if(!t)return;
   if(S.pagos[c.id])t.pg={data:S.pagoData[c.id]||hojeBR(),cid:c.id,...(c.pa?{a:c.pa,n:c.pn}:{})};else if(t.pg&&t.pg.cid===c.id)delete t.pg;});}
 /* pagamento da nota de terceiro: primeiro o que está no extrato; senão, o que foi marcado como pago no painel */
-function _pagtoTerceiroQualquer(t){const p=_pagtoTerceiro(t);if(p)return {data:p.data,txt:'pago '+p.data,total:true};
+function _pagtoTerceiroQualquer(t){const cp=(S.comprasCartao||[]).find(x=>x.tk===t.k);
+ if(cp)return {data:'',txt:'💳 '+(/sem identificação/.test(_cartaoNome(cp.cid))?'no cartão de crédito':'no cartão '+_cartaoNome(cp.cid))+' · '+(cp.n>1?cp.n+'× de '+brl(+cp.vals[0]||0):'à vista')+' · fatura de '+_ymLabel(cp.m0),total:true,painel:true,cartao:cp.id,pdf:'CARTAO '+(cp.n>1?cp.n+'x':'a vista')};
+ const p=_pagtoTerceiro(t);if(p)return {data:p.data,txt:'pago '+p.data,total:true};
  if(t.pg){const parcial=t.pg.n&&t.pg.a<t.pg.n;return {data:t.pg.data,txt:(parcial?'parcela '+t.pg.a+'/'+t.pg.n+' paga ':'pago ')+t.pg.data,total:!parcial,painel:true};}return null;}
 function lancarTerceiroEmContas(k,abrir){const t=(S.terceiros||[]).find(x=>x.k===k);if(!t)return null;
+ const cp0=(S.comprasCartao||[]).find(x=>x.tk===k);if(cp0){if(abrir)abrirEdicaoCompra(cp0.id);return null;}
  const ja=(S.contasExtra||[]).find(c=>c.tk===k);if(ja){if(abrir)abrirEdicaoConta(ja.id);return null;}
  if(t.lanc)return null;let pago=null;try{pago=_pagtoTerceiro(t);}catch(e){}if(pago&&!abrir)return null;
  const id='x'+Date.now().toString(36)+Math.floor(Math.random()*1e4);
@@ -3187,7 +3248,7 @@ function _relatorioPDF(D,C3,paginas){const {jsPDF}=window.jspdf;const doc=new js
   doc.setFontSize(7.5);doc.setTextColor(...GRAY);doc.text('Bruto = valor fiscal (base do Simples). Líquido = valor que caiu na conta (bruto - ISS retido pelo tomador).',12,doc.lastAutoTable.finalY+5);doc.setTextColor(0);
   /* 4.1 CONTRATAÇÃO DE TERCEIROS (notas tomadas) */
   {const TT=(S.terceiros||[]).filter(t=>t.mes===D.m);if(TT.length){let yy=doc.lastAutoTable.finalY+13;doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...NAVY);doc.text('4.1 Contratação de terceiros (notas recebidas de fornecedores e pagas)',12,yy);doc.setTextColor(0);doc.setFont('helvetica','normal');
-    const tb=TT.map(t=>{const pg=_pagtoTerceiroQualquer(t);return [String(t.n),_pt(t.forn),_pt(t.cnpj||'-'),_pt(t.data||''),_brlP(t.valor),pg?(pg.total?('PAGO '+pg.data.slice(0,5)+(pg.painel?' (painel)':'')):_pt(pg.txt.replace(/\/\d{4}$/,''))):'sem pagamento no extrato'];});
+    const tb=TT.map(t=>{const pg=_pagtoTerceiroQualquer(t);return [String(t.n),_pt(t.forn),_pt(t.cnpj||'-'),_pt(t.data||''),_brlP(t.valor),pg?(pg.cartao?pg.pdf:pg.total?('PAGO '+pg.data.slice(0,5)+(pg.painel?' (painel)':'')):_pt(pg.txt.replace(/\/\d{4}$/,''))):'sem pagamento no extrato'];});
     tb.push(['','TOTAL','','',_brlP(TT.reduce((a,t)=>a+(+t.valor||0),0)),'']);
     doc.autoTable({startY:yy+3,head:[['NF','Fornecedor','CNPJ','Emissão','Valor','Pagamento']],body:tb,theme:'striped',headStyles:{fillColor:NAVY,fontSize:7.6},styles:{fontSize:7.8,cellPadding:2},
       columnStyles:{0:{halign:'center',cellWidth:11},4:{halign:'right'},5:{halign:'center'}},margin:{left:12,right:12,top:18},
